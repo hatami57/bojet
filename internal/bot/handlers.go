@@ -1,183 +1,147 @@
 package bot
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
-	"slices"
-	"sonatebot/internal/config"
 	"strconv"
 
 	"gopkg.in/telebot.v4"
 )
 
-var adminAnchors = map[int64]int{}
-var pendingContact = map[int64]bool{}
+func (b *SonateBot) RegisterHandlers() {
+	b.TgBot.Handle("/start", b.handleStart)
 
-func RegisterHandlers(tb *telebot.Bot, db *sql.DB, cfg *config.Config) {
-	// Send anchor messages to each admin
-	for _, adminID := range cfg.AdminIDs {
-		msg, err := tb.Send(&telebot.User{ID: adminID}, "💬 User messages will appear in this thread")
-		if err != nil {
-			log.Printf("⚠️ Failed to send anchor to admin %d: %v", adminID, err)
-			continue
-		}
-		adminAnchors[adminID] = msg.ID
+	b.TgBot.Handle(telebot.OnContact, b.handleContactMessage)
+	b.TgBot.Handle(&telebot.Btn{Unique: "approve"}, b.handleApproveUser)
+	b.TgBot.Handle(&telebot.Btn{Unique: "reject"}, b.handleRejectUser)
+
+	b.TgBot.Handle(telebot.OnText, b.messageHandler)
+	b.TgBot.Handle(telebot.OnVoice, b.messageHandler)
+	b.TgBot.Handle(telebot.OnAudio, b.messageHandler)
+	b.TgBot.Handle(telebot.OnVideo, b.messageHandler)
+}
+
+func (b *SonateBot) handleStart(c telebot.Context) error {
+	return c.Send("Welcome! Please share your phone number:", b.PublicKeyboard())
+}
+
+func (b *SonateBot) handleContactMessage(c telebot.Context) error {
+	contact := c.Message().Contact
+	if err := b.SaveContact(contact); err != nil {
+		return c.Send("⚠️ Failed to save your phone number.")
 	}
 
-	// Start command
-	tb.Handle("/start", func(c telebot.Context) error {
-		log.Printf("Handle /start")
+	inline := &telebot.ReplyMarkup{}
+	approveBtn := inline.Data("✅ Approve", "approve", strconv.FormatInt(contact.UserID, 10))
+	rejectBtn := inline.Data("❌ Reject", "reject", strconv.FormatInt(contact.UserID, 10))
+	inline.Inline(inline.Row(approveBtn, rejectBtn))
+	msg := fmt.Sprintf("📥 New request:\nFrom User: @%s\nFirst Name: %s\nLast Name: %s\nPhone Number: %s",
+		c.Sender().Username, contact.FirstName, contact.LastName, contact.PhoneNumber)
 
-		keyboard := &telebot.ReplyMarkup{ResizeKeyboard: true}
-		btnShare := keyboard.Contact("📱 Share phone number")
-		btnContact := keyboard.Text("📞 Contact Admin")
-		keyboard.Reply(
-			keyboard.Row(btnShare),
-			keyboard.Row(btnContact),
-		)
-
-		return c.Send("Welcome! Please share your phone number:", keyboard)
-	})
-
-	// Handle contact
-	tb.Handle(telebot.OnContact, func(c telebot.Context) error {
-		log.Printf("Handle Contact")
-		contact := c.Message().Contact
-		_, err := db.Exec("INSERT OR IGNORE INTO users (tg_id, phone) VALUES (?, ?)", c.Sender().ID, contact.PhoneNumber)
-		if err != nil {
-			return c.Send("⚠️ Failed to save your phone number.")
+	for adminID := range b.cfg.AdminIDs {
+		if _, err := b.TgBot.Send(&telebot.User{ID: adminID}, msg, inline); err != nil {
+			return c.Send("⚠️ Failed to send request to admin.")
 		}
-		inline := &telebot.ReplyMarkup{}
-		approveBtn := inline.Data("✅ Approve", "approve", strconv.FormatInt(c.Sender().ID, 10))
-		rejectBtn := inline.Data("❌ Reject", "reject", strconv.FormatInt(c.Sender().ID, 10))
-		inline.Inline(inline.Row(approveBtn, rejectBtn))
-		msg := fmt.Sprintf("📥 New request:\nUser: @%s\nPhone: %s",
-			c.Sender().Username, contact.PhoneNumber)
-
-		// Notify admins
-		for _, adminID := range cfg.AdminIDs {
-			tb.Send(&telebot.User{ID: adminID}, msg, inline)
-		}
-
-		return c.Send("✅ Your request has been submitted. Please wait for admin approval.")
-	})
-
-	tb.Handle(&telebot.Btn{Unique: "approve"}, func(c telebot.Context) error {
-		log.Printf("Handle approve")
-		if !slices.Contains(cfg.AdminIDs, c.Sender().ID) {
-			return c.Respond(&telebot.CallbackResponse{Text: "Not authorized"})
-		}
-		userID, err := strconv.ParseInt(c.Data(), 10, 64)
-		if err != nil {
-			return c.Respond(&telebot.CallbackResponse{Text: "Invalid user ID"})
-		}
-		_, err = db.Exec("UPDATE users SET is_confirmed=1 WHERE tg_id=?", userID)
-		if err != nil {
-			return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
-		}
-		tb.Send(&telebot.User{ID: userID}, "🎉 Your request has been approved! You can now use the bot.")
-		return c.Edit(fmt.Sprintf("✅ Approved user %d", userID))
-	})
-
-	// Reject handler
-	tb.Handle(&telebot.Btn{Unique: "reject"}, func(c telebot.Context) error {
-		log.Printf("Handle reject")
-		if !slices.Contains(cfg.AdminIDs, c.Sender().ID) {
-			return c.Respond(&telebot.CallbackResponse{Text: "Not authorized"})
-		}
-		userID, err := strconv.ParseInt(c.Data(), 10, 64)
-		if err != nil {
-			return c.Respond(&telebot.CallbackResponse{Text: "Invalid user ID"})
-		}
-		// Optionally remove from DB
-		_, err = db.Exec("DELETE FROM users WHERE tg_id=?", userID)
-		if err != nil {
-			return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
-		}
-		tb.Send(&telebot.User{ID: userID}, "❌ Sorry, your request was rejected by admin.")
-		return c.Edit(fmt.Sprintf("❌ Rejected user %d", userID))
-	})
-
-	// Forward confirmed user messages → reply to each admin’s anchor
-	forwardHandler := func(c telebot.Context) error {
-		log.Printf("Handle forward")
-		if slices.Contains(cfg.AdminIDs, c.Sender().ID) {
-			log.Printf("Handle forward: is admin, return.")
-			return nil
-		}
-
-		user := c.Sender()
-		var isConfirmed bool
-		err := db.QueryRow("SELECT is_confirmed FROM users WHERE tg_id=?", user.ID).Scan(&isConfirmed)
-		if err != nil || !isConfirmed {
-			log.Printf("Handle forward: user is not confirmed, return.")
-			return nil
-		}
-
-		for adminID, anchorMsgID := range adminAnchors {
-			_, err := tb.Forward(&telebot.User{ID: adminID}, c.Message(), &telebot.SendOptions{
-				ReplyTo: &telebot.Message{ID: anchorMsgID},
-			})
-			if err != nil {
-				log.Printf("⚠️ Forward error to admin %d: %v", adminID, err)
-			}
-		}
-		log.Printf("Handle forward: sent to admin.")
-
-		return c.Send("✅ Sent to admin.")
 	}
 
-	tb.Handle(telebot.OnText, forwardHandler)
-	tb.Handle(telebot.OnVoice, forwardHandler)
-	tb.Handle(telebot.OnAudio, forwardHandler)
-	tb.Handle(telebot.OnVideo, forwardHandler)
+	return c.Send("✅ Your request has been submitted. Please wait for admin approval.")
+}
 
-	// Admin replies → relay back to user
-	tb.Handle(telebot.OnText, func(c telebot.Context) error {
-		if c.Text() == "📞 Contact Admin" {
-			pendingContact[c.Sender().ID] = true
-			return c.Send("✍️ Please type or record your message for the admin. It will be delivered directly.")
-		}
+func (b *SonateBot) handleApproveUser(c telebot.Context) error {
+	if !b.IsAdmin(c.Sender().ID) {
+		return c.Respond(&telebot.CallbackResponse{Text: "🚫 Not authorized"})
+	}
+	userID, err := strconv.ParseInt(c.Data(), 10, 64)
+	if err != nil {
+		return c.Respond(&telebot.CallbackResponse{Text: "Invalid user ID"})
+	}
+	if err = b.SetUserConfirmation(userID, true); err != nil {
+		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
+	}
 
-		// If user is in contact mode
-		if pendingContact[c.Sender().ID] {
-			user := c.Sender()
+	_, err = b.TgBot.Send(&telebot.User{ID: userID}, "🎉 Your request has been approved! You can now use the bot.")
+	if err != nil {
+		return c.Respond(&telebot.CallbackResponse{Text: "Failed to send message to user"})
+	}
 
-			// Forward this message to all admins as a reply to anchor
-			for adminID, anchorMsgID := range adminAnchors {
-				_, err := tb.Forward(&telebot.User{ID: adminID}, c.Message(), &telebot.SendOptions{
-					ReplyTo: &telebot.Message{ID: anchorMsgID},
-				})
-				if err != nil {
-					log.Printf("⚠️ Forward error to admin %d: %v", adminID, err)
-				}
+	return c.Edit(fmt.Sprintf("✅ Approved user %d", userID))
+}
+
+func (b *SonateBot) handleRejectUser(c telebot.Context) error {
+	if !b.IsAdmin(c.Sender().ID) {
+		return c.Respond(&telebot.CallbackResponse{Text: "🚫 Not authorized"})
+	}
+	userID, err := strconv.ParseInt(c.Data(), 10, 64)
+	if err != nil {
+		return c.Respond(&telebot.CallbackResponse{Text: "Invalid user ID"})
+	}
+	if err = b.SetUserConfirmation(userID, false); err != nil {
+		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
+	}
+
+	_, err = b.TgBot.Send(&telebot.User{ID: userID}, "🚫 Sorry, your request was rejected by admin.")
+	if err != nil {
+		return c.Respond(&telebot.CallbackResponse{Text: "Failed to send message to user"})
+	}
+
+	return c.Edit(fmt.Sprintf("❌ Rejected user %d", userID))
+}
+
+func (b *SonateBot) messageHandler(c telebot.Context) error {
+	if b.IsAdmin(c.Sender().ID) {
+		return b.handleAdminMessage(c)
+	}
+
+	return b.handleUserMessage(c)
+}
+
+func (b *SonateBot) handleAdminMessage(c telebot.Context) error {
+	msg := c.Message()
+	if msg.ReplyTo != nil && msg.ReplyTo.OriginalSender != nil {
+		return b.handleReplyToUserMessage(c)
+	}
+
+	return c.Send("⚠️ Unknown command")
+}
+
+func (b *SonateBot) handleUserMessage(c telebot.Context) error {
+	userID := c.Sender().ID
+	user, err := b.User(userID)
+	if err != nil {
+		return c.Send("⚠️ An error has occurred, please try again later.")
+	}
+	if user == nil {
+		return c.Send("⚠️ You are not registered. Please share your phone number.", b.PublicKeyboard())
+	}
+
+	if user.IsSendingMessage {
+		for adminID := range b.cfg.AdminIDs {
+			if _, err := b.TgBot.Forward(&telebot.User{ID: adminID}, c.Message()); err != nil {
+				return c.Send("⚠️ Failed to forward message to admin.")
 			}
-
-			delete(pendingContact, user.ID)
-			return c.Send("✅ Your message has been sent to the admin.")
 		}
 
-		return nil
+		user.IsSendingMessage = false
+		return c.Send("✅ Your message has been sent to the admin.")
+	} else if c.Text() == "📞 Contact Admin" {
+		user.IsSendingMessage = true
+		return c.Send("✍️ Please type or record your message for the admin. It will be delivered directly.")
+	}
 
-		// log.Printf("Handle Text: check if its admin")
-		// if !slices.Contains(cfg.AdminIDs, c.Sender().ID) {
-		// 	log.Printf("Handle Text: its not admin, return.")
-		// 	return nil
-		// }
-		// if c.Message().ReplyTo == nil || c.Message().ReplyTo.OriginalSender == nil {
-		// 	log.Printf("Handle Text: ReplyTo == nil || ReplyTo.Sender == nil. return.")
-		// 	return nil
-		// }
-		//
-		// user := c.Message().ReplyTo.OriginalSender
-		// _, err := tb.Send(user, c.Text())
-		// if err != nil {
-		// 	log.Println("Send error:", err)
-		// 	return c.Send("⚠️ Failed to send reply to user.")
-		// }
-		// log.Printf("Handle Text: Reply delivered.")
-		// return c.Send("✅ Reply delivered.")
-	})
+	if !user.IsConfirmed {
+		return c.Send("🚫 You are not approved to use this bot.", b.PublicKeyboard())
+	}
 
+	return c.Send("⚠️ If you want to send a message to admin, use \"📞 Contact Admin\" button.", b.UserKeyboard(userID))
+}
+
+func (b *SonateBot) handleReplyToUserMessage(c telebot.Context) error {
+	originalSender := c.Message().ReplyTo.OriginalSender
+	_, err := b.TgBot.Send(originalSender, c.Text())
+	if err != nil {
+		log.Println("Reply to user error:", err)
+		return c.Send("⚠️ Failed to send reply to user.")
+	}
+
+	return c.Send("✅ Reply delivered.")
 }

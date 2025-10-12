@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"sonatebot/internal/config"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -13,11 +12,11 @@ import (
 
 const maxRetries = 5
 
-func StartSchedulers(tb *telebot.Bot, db *sql.DB, cfg *config.Config) {
+func (b *SonateBot) StartSchedulers() {
 	c := cron.New()
 
 	// Load schedules from DB
-	rows, err := db.Query("SELECT id, cron_expr, message FROM schedules WHERE is_active=1")
+	rows, err := b.db.Query("SELECT id, cron_expr, message FROM schedules WHERE is_active=1")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -32,7 +31,7 @@ func StartSchedulers(tb *telebot.Bot, db *sql.DB, cfg *config.Config) {
 		content := msg
 
 		_, err := c.AddFunc(expr, func() {
-			queueBroadcast(tb, db, scheduleID, content)
+			b.queueBroadcast(scheduleID, content)
 		})
 		if err != nil {
 			log.Printf("Invalid cron expr %s: %v", expr, err)
@@ -42,14 +41,13 @@ func StartSchedulers(tb *telebot.Bot, db *sql.DB, cfg *config.Config) {
 	}
 
 	// Check inactive users daily at 09:00
-	c.AddFunc("0 9 * * *", func() { checkInactiveUsers(tb, db, cfg) })
+	c.AddFunc("0 9 * * *", func() { b.checkInactiveUsers() })
 
 	c.Start()
 }
 
-// Queue broadcast for all confirmed users
-func queueBroadcast(tb *telebot.Bot, db *sql.DB, scheduleID int, msg string) {
-	rows, err := db.Query("SELECT tg_id FROM users WHERE is_confirmed=1")
+func (b *SonateBot) queueBroadcast(scheduleID int, msg string) {
+	rows, err := b.db.Query("SELECT tg_id FROM users WHERE is_confirmed=1")
 	if err != nil {
 		log.Println("DB error:", err)
 		return
@@ -60,19 +58,18 @@ func queueBroadcast(tb *telebot.Bot, db *sql.DB, scheduleID int, msg string) {
 		var userID int64
 		rows.Scan(&userID)
 
-		go sendWithRetry(tb, db, scheduleID, userID, msg)
+		go b.sendWithRetry(scheduleID, userID, msg)
 	}
 }
 
-// Retry sending messages
-func sendWithRetry(tb *telebot.Bot, db *sql.DB, scheduleID int, userID int64, msg string) {
+func (b *SonateBot) sendWithRetry(scheduleID int, userID int64, msg string) {
 	delay := time.Second
 	var err error
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		_, err = tb.Send(&telebot.User{ID: userID}, msg)
+		_, err = b.TgBot.Send(&telebot.User{ID: userID}, msg)
 		if err == nil {
-			_, _ = db.Exec(`UPDATE deliveries 
+			_, _ = b.db.Exec(`UPDATE deliveries 
                             SET status='sent', attempts=? 
                             WHERE schedule_id=? AND user_id=?`,
 				attempt, scheduleID, userID)
@@ -84,7 +81,7 @@ func sendWithRetry(tb *telebot.Bot, db *sql.DB, scheduleID int, userID int64, ms
 		delay *= 2
 	}
 
-	_, _ = db.Exec(`UPDATE deliveries 
+	_, _ = b.db.Exec(`UPDATE deliveries 
                     SET status='failed' 
                     WHERE schedule_id=? AND user_id=?`,
 		scheduleID, userID)
@@ -93,8 +90,8 @@ func sendWithRetry(tb *telebot.Bot, db *sql.DB, scheduleID int, userID int64, ms
 }
 
 // Check for inactive users (no submission in 21 days)
-func checkInactiveUsers(tb *telebot.Bot, db *sql.DB, cfg *config.Config) {
-	rows, err := db.Query(`
+func (b *SonateBot) checkInactiveUsers() {
+	rows, err := b.db.Query(`
         SELECT tg_id, phone, last_submission_at
         FROM users 
         WHERE is_confirmed=1
@@ -117,8 +114,8 @@ func checkInactiveUsers(tb *telebot.Bot, db *sql.DB, cfg *config.Config) {
 	}
 
 	if message != "" {
-		for _, adminID := range cfg.AdminIDs {
-			tb.Send(&telebot.User{ID: adminID}, "⚠️ Inactive users (3+ weeks):\n\n"+message)
+		for adminID := range b.cfg.AdminIDs {
+			b.TgBot.Send(&telebot.User{ID: adminID}, "⚠️ Inactive users (3+ weeks):\n\n"+message)
 		}
 	}
 }
