@@ -132,7 +132,15 @@ func (b *SonateBot) handleUserMessage(c telebot.Context) error {
 		return c.Send("🚫 You are not approved to use this bot.", b.PublicKeyboard())
 	}
 
-	return c.Send("⚠️ If you want to send a message to admin, use \"📞 Contact Admin\" button.", b.UserKeyboard(userID))
+	processed, err := b.ProcessPage(c)
+	if processed {
+		return nil
+	}
+	if err != nil {
+		return c.Send("⚠️ An error has occurred, please try again later.", user.Keyboard())
+	}
+
+	return c.Send("⚠️ If you want to send a message to admin, use \"📞 Contact Admin\" button.", user.Keyboard())
 }
 
 func (b *SonateBot) handleReplyToUserMessage(c telebot.Context) error {

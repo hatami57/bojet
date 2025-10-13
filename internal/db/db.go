@@ -48,6 +48,7 @@ func Init(path string) *sql.DB {
 
 		CREATE TABLE IF NOT EXISTS pages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT UNIQUE,
             title TEXT NOT NULL,
             items TEXT CHECK(items IS NULL OR json_valid(items)),
             is_public BOOLEAN DEFAULT 1

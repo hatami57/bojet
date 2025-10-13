@@ -2,6 +2,7 @@ package bot
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -19,8 +20,11 @@ type SonateBot struct {
 	cfg            *config.Config
 	publicKeyboard *telebot.ReplyMarkup
 	userKeyboard   *telebot.ReplyMarkup
+	publicPage     *Page
+	userHomePage   *Page
 
 	users map[int64]*User
+	pages map[int]*Page
 }
 
 func NewSonateBot(cfg *config.Config, db *sql.DB) *SonateBot {
@@ -64,15 +68,22 @@ func NewSonateBot(cfg *config.Config, db *sql.DB) *SonateBot {
 		publicKeyboard: publicKeyboard,
 		userKeyboard:   userKeyboard,
 		users:          map[int64]*User{},
+		pages:          map[int]*Page{},
 	}
 }
 
-func (b *SonateBot) Start() {
+func (b *SonateBot) Start() error {
+	if err := b.LoadPages(); err != nil {
+		return err
+	}
+
 	b.RegisterHandlers()
 	b.StartSchedulers()
 
 	log.Println("🚀 Bot started")
 	b.TgBot.Start()
+
+	return nil
 }
 
 func (b *SonateBot) Stop() {
@@ -89,15 +100,26 @@ func (b *SonateBot) PublicKeyboard() *telebot.ReplyMarkup {
 }
 
 func (b *SonateBot) UserKeyboard(userID int64) *telebot.ReplyMarkup {
-	if user, ok := b.users[userID]; ok && user.IsSendingMessage {
+	user, err := b.User(userID)
+	if err != nil {
+		log.Println("Error getting user:", err)
+		return nil
+	}
+	if user == nil {
+		log.Println("No user to get keyboard for")
 		return nil
 	}
 
-	return b.userKeyboard
+	if user.IsSendingMessage {
+		return nil
+	}
+
+	return user.CurrentPage.GetKeyboard(!user.PageHistory.IsEmpty())
 }
 
 func (b *SonateBot) User(id int64) (*User, error) {
 	if user, ok := b.users[id]; ok {
+		user.ResetExpiration(b.UserCacheExpirationDuration)
 		return user, nil
 	}
 
@@ -112,4 +134,41 @@ func (b *SonateBot) User(id int64) (*User, error) {
 
 	b.users[id] = user
 	return user, nil
+}
+
+func (b *SonateBot) ProcessPage(c telebot.Context) (bool, error) {
+	userID := c.Sender().ID
+
+	user, err := b.User(userID)
+	if err != nil {
+		return false, err
+	}
+	if user == nil {
+		return false, fmt.Errorf("no user to process page for")
+	}
+
+	text := c.Text()
+	if text == "" {
+		return false, fmt.Errorf("no page action")
+	}
+
+	if !user.PageHistory.IsEmpty() && text == PageBackText {
+		user.CurrentPage = user.PageHistory.Pop()
+		return true, c.Send(user.CurrentPage.Title, user.Keyboard())
+	}
+
+	for _, item := range user.CurrentPage.Items {
+		if item.Title == text {
+			if item.ShowPage != nil {
+				user.PageHistory.Push(user.CurrentPage)
+				user.CurrentPage = item.ShowPage
+			} else if len(item.ForwardMessageIDs) > 0 {
+				c.Send("TODO: forward some messages...")
+			}
+
+			return true, c.Send(user.CurrentPage.Title, user.Keyboard())
+		}
+	}
+
+	return false, nil
 }

@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"gopkg.in/telebot.v4"
 )
 
 func (b *SonateBot) loadUser(id int64) (*User, error) {
-	user := User{
-		ExpireAt: time.Now().Add(b.UserCacheExpirationDuration),
-	}
+	user := NewUser(b.userHomePage, b.UserCacheExpirationDuration)
 
 	query := "SELECT tg_id, first_name, last_name, username, phone_number, is_confirmed FROM users WHERE tg_id = ?"
 	err := b.db.
@@ -27,7 +24,7 @@ func (b *SonateBot) loadUser(id int64) (*User, error) {
 		return nil, err
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func (b *SonateBot) SaveContact(contact *telebot.Contact) error {
@@ -65,7 +62,7 @@ func (b *SonateBot) SetUserConfirmation(userID int64, isConfirmed bool) error {
 }
 
 func (b *SonateBot) LoadPages() error {
-	query := "SELECT id, title, items, is_public FROM pages"
+	query := "SELECT id, code, title, items, is_public FROM pages"
 	rows, err := b.db.Query(query)
 	if err != nil {
 		return err
@@ -75,9 +72,10 @@ func (b *SonateBot) LoadPages() error {
 	pages := map[int]*Page{}
 	for rows.Next() {
 		var id int
+		var code *string
 		var title, itemsJSON string
 		var isPublic bool
-		err = rows.Scan(&id, &title, &itemsJSON, &isPublic)
+		err = rows.Scan(&id, &code, &title, &itemsJSON, &isPublic)
 		if err != nil {
 			return err
 		}
@@ -88,6 +86,7 @@ func (b *SonateBot) LoadPages() error {
 
 		pages[id] = &Page{
 			ID:       id,
+			Code:     code,
 			Title:    title,
 			Items:    pageItems,
 			IsPublic: isPublic,
@@ -104,7 +103,19 @@ func (b *SonateBot) LoadPages() error {
 				}
 			}
 		}
+
+		if page.Code != nil {
+			switch *page.Code {
+			case "PUBLIC":
+				b.publicPage = page
+
+			case "USER_HOME":
+				b.userHomePage = page
+			}
+		}
 	}
+
+	b.pages = pages
 
 	return nil
 }
