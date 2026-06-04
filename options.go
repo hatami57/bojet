@@ -1,6 +1,7 @@
 package bojet
 
 import (
+	"log/slog"
 	"time"
 
 	"gopkg.in/telebot.v4"
@@ -110,4 +111,10 @@ func WithMessages(m Messages) Option {
 // tasks. c is nil when called from a background goroutine (e.g. broadcast).
 func WithErrorHandler(fn func(err error, c telebot.Context)) Option {
 	return func(b *Bot) { b.errorHandler = fn }
+}
+
+// WithLogger sets the structured logger used for internal bot diagnostics.
+// The default logger writes info-level text to stdout via core.NewLogger(nil).
+func WithLogger(l *slog.Logger) Option {
+	return func(b *Bot) { b.logger = l }
 }

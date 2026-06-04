@@ -2,11 +2,13 @@ package bojet
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
+	"github.com/hatami57/microjet/core"
 	"github.com/robfig/cron/v3"
 	"gopkg.in/telebot.v4"
 )
@@ -25,6 +27,7 @@ type Bot struct {
 	registration RegistrationFlow
 	errorHandler func(error, telebot.Context)
 	contactAdmin bool
+	logger       *slog.Logger
 
 	hooks hooks
 
@@ -53,6 +56,7 @@ func New(token string, opts ...Option) (*Bot, error) {
 		contactAdmin: true,
 		errorHandler: func(err error, _ telebot.Context) {},
 		cron:         cron.New(),
+		logger:       core.NewLogger(nil),
 	}
 
 	for _, opt := range opts {
@@ -88,7 +92,7 @@ func New(token string, opts ...Option) (*Bot, error) {
 // polling Telegram for updates. Blocks until Stop() is called.
 func (b *Bot) Start() error {
 	if b.store == nil {
-		return fmt.Errorf("bojet: UserStore is required — use WithStore()")
+		return ErrStoreRequired
 	}
 
 	b.setupMiddleware()

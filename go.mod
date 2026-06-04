@@ -3,6 +3,7 @@ module bojet
 go 1.26
 
 require (
+	github.com/hatami57/microjet/core v0.0.0-00010101000000-000000000000
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/telebot.v4 v4.0.0-beta.5
 	modernc.org/sqlite v1.28.0
@@ -18,3 +19,5 @@ require (
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.7.2 // indirect
 )
+
+replace github.com/hatami57/microjet/core => ../microjet/core

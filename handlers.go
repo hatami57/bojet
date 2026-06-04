@@ -2,7 +2,6 @@ package bojet
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 
 	"gopkg.in/telebot.v4"
@@ -84,7 +83,7 @@ func (b *Bot) handleUserMessage(c telebot.Context) error {
 func (b *Bot) handleReplyToUser(c telebot.Context) error {
 	original := c.Message().ReplyTo.OriginalSender
 	if _, err := b.tb.Forward(original, c.Message()); err != nil {
-		log.Println("reply to user error:", err)
+		b.logger.Error("forward reply to user failed", "user_id", original.ID, "error", err)
 		return c.Send(b.messages.ReplyFailed)
 	}
 	return c.Send(b.messages.ReplyDelivered)

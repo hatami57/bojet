@@ -1,3 +1,37 @@
-.idea/
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
+# Test binary
+*.test
+
+# Output of go build
+/bojet
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Environment files
+.env
+.env.*
+
+# Database files
 *.db
+*.sqlite
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
