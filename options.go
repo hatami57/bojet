@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/hatami57/microjet/core"
 	"gopkg.in/telebot.v4"
 )
 
@@ -117,4 +118,14 @@ func WithErrorHandler(fn func(err error, c telebot.Context)) Option {
 // The default logger writes info-level text to stdout via core.NewLogger(nil).
 func WithLogger(l *slog.Logger) Option {
 	return func(b *Bot) { b.logger = l }
+}
+
+// WithClock sets the time source used for user cache expiry. Defaults to
+// core.SystemClock; override it with a fake core.TimeProvider in tests.
+func WithClock(clock core.TimeProvider) Option {
+	return func(b *Bot) {
+		if clock != nil {
+			b.clock = clock
+		}
+	}
 }

@@ -6,13 +6,23 @@ import (
 	"bojet"
 	"bojet/sqlite"
 	"log"
-	"os"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/hatami57/microjet/core"
+	"github.com/hatami57/microjet/utils"
 	"gopkg.in/telebot.v4"
 )
 
 func main() {
+	// Structured logger from microjet/core (text by default; set LOG_FORMAT=json
+	// or LOG_LEVEL=debug to change it without touching code).
+	logger := core.NewLogger(&core.LogConfig{
+		Level:  utils.GetEnvString("LOG_LEVEL", "info"),
+		Format: utils.GetEnvString("LOG_FORMAT", "text"),
+	})
+
 	store, err := sqlite.NewStore("./complex.db")
 	if err != nil {
 		log.Fatal(err)
@@ -48,12 +58,13 @@ func main() {
 	)
 
 	// --- Bot ---
-	bot, err := bojet.New(os.Getenv("BOT_TOKEN"),
+	bot, err := bojet.New(utils.GetEnvString("BOT_TOKEN", ""),
 		bojet.WithStore(store),
-		bojet.WithAdmins(adminIDFromEnv()),
-		bojet.WithProxy(os.Getenv("BOT_PROXY_URL")),
+		bojet.WithAdmins(adminIDsFromEnv()...),
+		bojet.WithProxy(utils.GetEnvString("BOT_PROXY_URL", "")),
 		bojet.WithHomePage(homePage),
 		bojet.WithCacheExpiry(15*time.Minute),
+		bojet.WithLogger(logger),
 
 		// Override only the strings you need.
 		bojet.WithMessages(bojet.Messages{
@@ -68,9 +79,9 @@ func main() {
 
 		bojet.WithErrorHandler(func(err error, c telebot.Context) {
 			if c != nil {
-				log.Printf("handler error (user %d): %v", c.Sender().ID, err)
+				logger.Error("handler error", "user_id", c.Sender().ID, "error", err)
 			} else {
-				log.Println("background error:", err)
+				logger.Error("background error", "error", err)
 			}
 		}),
 	)
@@ -80,17 +91,17 @@ func main() {
 
 	// --- Event hooks ---
 	bot.OnUserRegistered(func(u *bojet.User) error {
-		log.Printf("new registration: %s (%s)", u, u.PhoneNumber)
+		logger.Info("new registration", "user", u.String(), "phone", u.PhoneNumber)
 		return nil
 	})
 
 	bot.OnUserApproved(func(u *bojet.User) error {
-		log.Printf("approved: %s", u)
+		logger.Info("user approved", "user", u.String())
 		return nil
 	})
 
 	bot.OnUserRejected(func(u *bojet.User) error {
-		log.Printf("rejected: %s", u)
+		logger.Info("user rejected", "user", u.String())
 		return nil
 	})
 
@@ -107,13 +118,25 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("started")
+	logger.Info("bot started")
 	if err := bot.Start(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func adminIDFromEnv() int64 {
-	// In a real app, parse BOT_ADMIN_IDS from env.
-	return 123456789
+// adminIDsFromEnv parses BOT_ADMIN_IDS (a comma-separated list of Telegram user
+// IDs) using microjet's utils.GetEnvString for the lookup.
+func adminIDsFromEnv() []int64 {
+	raw := utils.GetEnvString("BOT_ADMIN_IDS", "")
+	var ids []int64
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if id, err := strconv.ParseInt(part, 10, 64); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }

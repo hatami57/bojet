@@ -1,7 +1,6 @@
 package bojet
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -28,6 +27,7 @@ type Bot struct {
 	errorHandler func(error, telebot.Context)
 	contactAdmin bool
 	logger       *slog.Logger
+	clock        core.TimeProvider
 
 	hooks hooks
 
@@ -57,6 +57,7 @@ func New(token string, opts ...Option) (*Bot, error) {
 		errorHandler: func(err error, _ telebot.Context) {},
 		cron:         cron.New(),
 		logger:       core.NewLogger(nil),
+		clock:        &core.SystemClock{},
 	}
 
 	for _, opt := range opts {
@@ -71,7 +72,8 @@ func New(token string, opts ...Option) (*Bot, error) {
 	if b.proxyURL != "" {
 		pu, err := url.Parse(b.proxyURL)
 		if err != nil {
-			return nil, fmt.Errorf("bojet: invalid proxy URL: %w", err)
+			return nil, core.NewBadRequestError("Proxy", "invalid proxy URL").
+				WithParams("url", b.proxyURL).WithInner(err)
 		}
 		settings.Client = &http.Client{
 			Transport: &http.Transport{Proxy: http.ProxyURL(pu)},
@@ -80,7 +82,7 @@ func New(token string, opts ...Option) (*Bot, error) {
 
 	tb, err := telebot.NewBot(settings)
 	if err != nil {
-		return nil, err
+		return nil, core.NewInternalError("Telegram", "failed to initialize Telegram bot").WithInner(err)
 	}
 	b.tb = tb
 	b.buildPublicKeyboard()
@@ -166,13 +168,15 @@ func (b *Bot) ScheduleBroadcast(expr string, msg string) error {
 }
 
 // resolveUser returns the user from the in-memory cache, or loads from the
-// store and seeds the cache. Returns nil (no error) for unknown users.
+// store and seeds the cache. A cached entry older than cacheExpiry is treated
+// as stale and reloaded from the store. Returns nil (no error) for unknown users.
 func (b *Bot) resolveUser(id int64) (*User, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if u, ok := b.users[id]; ok {
-		u.resetExpiration(b.cacheExpiry)
+	now := b.clock.Now()
+	if u, ok := b.users[id]; ok && !u.isExpired(now) {
+		u.resetExpiration(now, b.cacheExpiry)
 		return u, nil
 	}
 
@@ -181,11 +185,12 @@ func (b *Bot) resolveUser(id int64) (*User, error) {
 		return nil, err
 	}
 	if u == nil {
+		delete(b.users, id)
 		return nil, nil
 	}
 
 	u.CurrentPage = b.homePage
-	u.resetExpiration(b.cacheExpiry)
+	u.resetExpiration(now, b.cacheExpiry)
 	b.users[id] = u
 	return u, nil
 }
@@ -193,7 +198,7 @@ func (b *Bot) resolveUser(id int64) (*User, error) {
 func (b *Bot) cacheUser(u *User) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	u.resetExpiration(b.cacheExpiry)
+	u.resetExpiration(b.clock.Now(), b.cacheExpiry)
 	b.users[u.ID] = u
 }
 

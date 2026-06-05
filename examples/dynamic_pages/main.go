@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 	"time"
+
+	"github.com/hatami57/microjet/utils"
 )
 
 // --- Mock data layer ---------------------------------------------------------
@@ -121,7 +122,7 @@ func main() {
 		bojet.NavItem("👤 My Profile", profilePage),
 	)
 
-	bot, err := bojet.New(os.Getenv("BOT_TOKEN"),
+	bot, err := bojet.New(utils.GetEnvString("BOT_TOKEN", ""),
 		bojet.WithStore(store),
 		bojet.WithAdmins(123456789),
 		bojet.WithHomePage(homePage),

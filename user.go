@@ -37,10 +37,10 @@ func (u *User) String() string {
 	return u.FullName()
 }
 
-func (u *User) isExpired() bool {
-	return time.Now().After(u.expireAt)
+func (u *User) isExpired(now time.Time) bool {
+	return now.After(u.expireAt)
 }
 
-func (u *User) resetExpiration(d time.Duration) {
-	u.expireAt = time.Now().Add(d)
+func (u *User) resetExpiration(now time.Time, d time.Duration) {
+	u.expireAt = now.Add(d)
 }

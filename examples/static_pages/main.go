@@ -8,7 +8,8 @@ import (
 	"bojet"
 	"bojet/sqlite"
 	"log"
-	"os"
+
+	"github.com/hatami57/microjet/utils"
 )
 
 func main() {
@@ -76,7 +77,7 @@ func main() {
 		}),
 	)
 
-	bot, err := bojet.New(os.Getenv("BOT_TOKEN"),
+	bot, err := bojet.New(utils.GetEnvString("BOT_TOKEN", ""),
 		bojet.WithStore(store),
 		bojet.WithAdmins(123456789),
 		bojet.WithHomePage(homePage),
