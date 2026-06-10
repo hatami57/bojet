@@ -9,7 +9,6 @@ import (
 // Config is the root configuration for a bojet application.
 // Use LoadConfig() to populate it from config.toml and environment variables.
 type Config struct {
-	App *core.AppConfig `mapstructure:"app"`
 	Log *core.LogConfig `mapstructure:"log"`
 	Bot *BotConfig      `mapstructure:"bot"`
 }
@@ -35,8 +34,12 @@ type BotConfig struct {
 // LoadConfig reads config.toml (or config.local.toml) from the working directory
 // and merges environment variable overrides (prefix: APP_).
 func LoadConfig() (*Config, error) {
+	reader, err := core.NewViperConfigReader("")
+	if err != nil {
+		return nil, err
+	}
 	cfg := &Config{}
-	return cfg, core.Load(cfg, "")
+	return cfg, reader.ReadAll(cfg)
 }
 
 // WithConfig applies all configurable BotConfig fields as bot options.
@@ -79,7 +82,7 @@ func NewFromConfig(cfg *Config, opts ...Option) (*Bot, error) {
 		allOpts = append(allOpts, WithConfig(cfg.Bot))
 	}
 	if cfg != nil && cfg.Log != nil {
-		allOpts = append(allOpts, WithLogger(core.NewLogger(cfg.Log)))
+		allOpts = append(allOpts, WithLogger(core.NewLogger(cfg.Log, false)))
 	}
 	allOpts = append(allOpts, opts...)
 

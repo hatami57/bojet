@@ -121,7 +121,7 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 // WithClock sets the time source used for user cache expiry. Defaults to
-// core.SystemClock; override it with a fake core.TimeProvider in tests.
+// core.UTC; override it with a fake core.TimeProvider in tests.
 func WithClock(clock core.TimeProvider) Option {
 	return func(b *Bot) {
 		if clock != nil {

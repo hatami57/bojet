@@ -56,8 +56,8 @@ func New(token string, opts ...Option) (*Bot, error) {
 		contactAdmin: true,
 		errorHandler: func(err error, _ telebot.Context) {},
 		cron:         cron.New(),
-		logger:       core.NewLogger(nil),
-		clock:        &core.SystemClock{},
+		logger:       core.NewLogger(nil, false),
+		clock:        core.UTC,
 	}
 
 	for _, opt := range opts {

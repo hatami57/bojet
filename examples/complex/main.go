@@ -21,7 +21,7 @@ func main() {
 	logger := core.NewLogger(&core.LogConfig{
 		Level:  utils.GetEnvString("LOG_LEVEL", "info"),
 		Format: utils.GetEnvString("LOG_FORMAT", "text"),
-	})
+	}, false)
 
 	store, err := sqlite.NewStore("./complex.db")
 	if err != nil {
