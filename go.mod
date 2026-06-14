@@ -1,4 +1,4 @@
-module bojet
+module github.com/hatami57/bojet
 
 go 1.26.2
 
