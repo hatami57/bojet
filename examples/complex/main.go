@@ -3,12 +3,13 @@
 package main
 
 import (
-	"bojet"
-	"bojet/sqlite"
 	"log"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hatami57/bojet"
+	"github.com/hatami57/bojet/store"
 
 	"github.com/hatami57/microjet/core"
 	"github.com/hatami57/microjet/utils"
@@ -23,14 +24,15 @@ func main() {
 		Format: utils.GetEnvString("LOG_FORMAT", "text"),
 	}, false)
 
-	store, err := sqlite.NewStore("./complex.db")
+	store, err := store.NewStore("./complex.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer store.Close()
 
 	// --- Page tree ---
-	supportPage := bojet.NewPage("🛠 Support",
+	supportPage := bojet.NewPage(
+		"🛠 Support",
 		bojet.ActionItem("📞 Call us", func(c bojet.Context) error {
 			return c.Send("Call us at +98-21-00000000")
 		}),
@@ -39,7 +41,8 @@ func main() {
 		}),
 	)
 
-	accountPage := bojet.NewPage("👤 My Account",
+	accountPage := bojet.NewPage(
+		"👤 My Account",
 		bojet.ActionItem("📋 My Info", func(c bojet.Context) error {
 			u := c.BotUser()
 			return c.Send("Name: " + u.FullName() + "\nPhone: " + u.PhoneNumber)
@@ -49,7 +52,8 @@ func main() {
 		}),
 	)
 
-	homePage := bojet.NewPage("🏠 منوی اصلی",
+	homePage := bojet.NewPage(
+		"🏠 منوی اصلی",
 		bojet.NavItem("👤 حساب من", accountPage),
 		bojet.NavItem("🛠 پشتیبانی", supportPage),
 		bojet.ActionItem("📰 اخبار", func(c bojet.Context) error {
@@ -58,7 +62,8 @@ func main() {
 	)
 
 	// --- Bot ---
-	bot, err := bojet.New(utils.GetEnvString("BOT_TOKEN", ""),
+	bot, err := bojet.New(
+		utils.GetEnvString("BOT_TOKEN", ""),
 		bojet.WithStore(store),
 		bojet.WithAdmins(adminIDsFromEnv()...),
 		bojet.WithProxy(utils.GetEnvString("BOT_PROXY_URL", "")),

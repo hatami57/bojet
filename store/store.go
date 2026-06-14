@@ -1,16 +1,16 @@
-// Package sqlite provides a SQLite-backed UserStore for bojet, built on
+// Package store provides a SQLite-backed UserStore for bojet, built on
 // microjet's database stack: the same pure-Go glebarez/sqlite driver and the
 // generic gormx.Table helpers. Because it shares microjet's driver, a host
 // application can hand its own *gorm.DB to NewWithDB and the bot will store its
 // users in that same database/connection — no second driver, no second handle.
-package sqlite
+package store
 
 import (
 	"context"
 	"errors"
 	"time"
 
-	"bojet"
+	"github.com/hatami57/bojet"
 
 	"github.com/glebarez/sqlite"
 	"github.com/hatami57/microjet/gormx"

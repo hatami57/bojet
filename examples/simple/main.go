@@ -3,21 +3,22 @@
 package main
 
 import (
-	"bojet"
-	"bojet/sqlite"
 	"log"
 
+	"github.com/hatami57/bojet"
+	"github.com/hatami57/bojet/store"
 	"github.com/hatami57/microjet/utils"
 )
 
 func main() {
-	store, err := sqlite.NewStore("./simple.db")
+	store, err := store.NewStore("./simple.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer store.Close()
 
-	homePage := bojet.NewPage("🏠 Menu",
+	homePage := bojet.NewPage(
+		"🏠 Menu",
 		bojet.ActionItem("👋 Say Hello", func(c bojet.Context) error {
 			return c.Send("Hello, " + c.BotUser().FirstName + "!")
 		}),
@@ -26,7 +27,8 @@ func main() {
 		}),
 	)
 
-	bot, err := bojet.New(utils.GetEnvString("BOT_TOKEN", ""),
+	bot, err := bojet.New(
+		utils.GetEnvString("BOT_TOKEN", ""),
 		bojet.WithStore(store),
 		bojet.WithRegistrationFlow(&bojet.NoRegistrationFlow{}),
 		bojet.WithContactAdmin(false),

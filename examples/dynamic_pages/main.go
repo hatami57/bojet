@@ -5,13 +5,13 @@
 package main
 
 import (
-	"bojet"
-	"bojet/sqlite"
 	"fmt"
 	"log"
 	"math/rand"
 	"time"
 
+	"github.com/hatami57/bojet"
+	"github.com/hatami57/bojet/store"
 	"github.com/hatami57/microjet/utils"
 )
 
@@ -57,7 +57,7 @@ func fetchWeatherForecast() string {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	store, err := sqlite.NewStore("./dynamic.db")
+	store, err := store.NewStore("./dynamic.db")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -67,7 +67,8 @@ func main() {
 	// The structure (items) is static. The CONTENT each item sends is computed
 	// fresh on every button press.
 
-	myOrdersPage := bojet.NewPage("📦 My Orders",
+	myOrdersPage := bojet.NewPage(
+		"📦 My Orders",
 		bojet.ActionItem("📋 View all orders", func(c bojet.Context) error {
 			orders := fetchUserOrders(c.BotUser().ID)
 			if len(orders) == 0 {
@@ -89,7 +90,8 @@ func main() {
 		}),
 	)
 
-	dashboardPage := bojet.NewPage("📊 Dashboard",
+	dashboardPage := bojet.NewPage(
+		"📊 Dashboard",
 		bojet.ActionItem("📈 Live stats", func(c bojet.Context) error {
 			// Content fetched fresh on every press.
 			return c.Send(fetchLiveStats())
@@ -102,7 +104,8 @@ func main() {
 		}),
 	)
 
-	profilePage := bojet.NewPage("👤 My Profile",
+	profilePage := bojet.NewPage(
+		"👤 My Profile",
 		bojet.ActionItem("📋 View profile", func(c bojet.Context) error {
 			// Personalized — content differs per user.
 			u := c.BotUser()
@@ -116,13 +119,15 @@ func main() {
 		}),
 	)
 
-	homePage := bojet.NewPage("🏠 Main Menu",
+	homePage := bojet.NewPage(
+		"🏠 Main Menu",
 		bojet.NavItem("📦 My Orders", myOrdersPage),
 		bojet.NavItem("📊 Dashboard", dashboardPage),
 		bojet.NavItem("👤 My Profile", profilePage),
 	)
 
-	bot, err := bojet.New(utils.GetEnvString("BOT_TOKEN", ""),
+	bot, err := bojet.New(
+		utils.GetEnvString("BOT_TOKEN", ""),
 		bojet.WithStore(store),
 		bojet.WithAdmins(123456789),
 		bojet.WithHomePage(homePage),

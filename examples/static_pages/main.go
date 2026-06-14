@@ -5,15 +5,15 @@
 package main
 
 import (
-	"bojet"
-	"bojet/sqlite"
 	"log"
 
+	"github.com/hatami57/bojet"
+	"github.com/hatami57/bojet/store"
 	"github.com/hatami57/microjet/utils"
 )
 
 func main() {
-	store, err := sqlite.NewStore("./static.db")
+	store, err := store.NewStore("./static.db")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -22,7 +22,8 @@ func main() {
 	// --- Build a fixed page tree ---
 
 	// Leaf pages — no sub-navigation, just text responses.
-	faqDelivery := bojet.NewPage("🚚 Delivery FAQ",
+	faqDelivery := bojet.NewPage(
+		"🚚 Delivery FAQ",
 		bojet.ActionItem("How long does delivery take?", func(c bojet.Context) error {
 			return c.Send("Standard delivery takes 3–5 business days.")
 		}),
@@ -31,7 +32,8 @@ func main() {
 		}),
 	)
 
-	faqPayment := bojet.NewPage("💳 Payment FAQ",
+	faqPayment := bojet.NewPage(
+		"💳 Payment FAQ",
 		bojet.ActionItem("What payment methods do you accept?", func(c bojet.Context) error {
 			return c.Send("We accept Visa, MasterCard, and bank transfer.")
 		}),
@@ -40,7 +42,8 @@ func main() {
 		}),
 	)
 
-	faqReturns := bojet.NewPage("🔄 Returns FAQ",
+	faqReturns := bojet.NewPage(
+		"🔄 Returns FAQ",
 		bojet.ActionItem("What is your return policy?", func(c bojet.Context) error {
 			return c.Send("You may return any item within 30 days of purchase.")
 		}),
@@ -50,13 +53,15 @@ func main() {
 	)
 
 	// Mid-level pages group related leaf pages.
-	faqPage := bojet.NewPage("❓ FAQ",
+	faqPage := bojet.NewPage(
+		"❓ FAQ",
 		bojet.NavItem("🚚 Delivery", faqDelivery),
 		bojet.NavItem("💳 Payment", faqPayment),
 		bojet.NavItem("🔄 Returns", faqReturns),
 	)
 
-	contactPage := bojet.NewPage("📞 Contact Us",
+	contactPage := bojet.NewPage(
+		"📞 Contact Us",
 		bojet.ActionItem("📧 Email", func(c bojet.Context) error {
 			return c.Send("hello@example.com")
 		}),
@@ -69,7 +74,8 @@ func main() {
 	)
 
 	// Root home page.
-	homePage := bojet.NewPage("🏠 Welcome",
+	homePage := bojet.NewPage(
+		"🏠 Welcome",
 		bojet.NavItem("❓ FAQ", faqPage),
 		bojet.NavItem("📞 Contact Us", contactPage),
 		bojet.ActionItem("📢 About Us", func(c bojet.Context) error {
@@ -77,7 +83,8 @@ func main() {
 		}),
 	)
 
-	bot, err := bojet.New(utils.GetEnvString("BOT_TOKEN", ""),
+	bot, err := bojet.New(
+		utils.GetEnvString("BOT_TOKEN", ""),
 		bojet.WithStore(store),
 		bojet.WithAdmins(123456789),
 		bojet.WithHomePage(homePage),
