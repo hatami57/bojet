@@ -61,9 +61,9 @@ func (r *userRecord) toUser() *bojet.User {
 type Store struct {
 	db    *gorm.DB
 	users *gormx.Table[userRecord]
-	// external is true when db was supplied by the caller (NewWithDB); in that
+	// externalDB is true when db was supplied by the caller (NewWithDB); in that
 	// case the caller owns the connection and Close must not close it.
-	external bool
+	externalDB bool
 }
 
 // NewStore opens (or creates) a SQLite database at the given path using the same
@@ -81,7 +81,7 @@ func NewStore(path string) (*Store, error) {
 		}
 		return nil, err
 	}
-	store.external = false
+	store.externalDB = false
 	return store, nil
 }
 
@@ -98,13 +98,13 @@ func NewWithDB(db *gorm.DB) (*Store, error) {
 	if err := db.AutoMigrate(&userRecord{}); err != nil {
 		return nil, err
 	}
-	return &Store{db: db, users: gormx.NewTable[userRecord](db), external: true}, nil
+	return &Store{db: db, users: gormx.NewTable[userRecord](db), externalDB: true}, nil
 }
 
 // Close closes the underlying database connection, unless it was supplied by the
 // caller via NewWithDB (in which case Close is a no-op and the caller closes it).
 func (s *Store) Close() error {
-	if s.external {
+	if s.externalDB {
 		return nil
 	}
 	sqlDB, err := s.db.DB()

@@ -4,9 +4,9 @@ go 1.26.2
 
 require (
 	github.com/glebarez/sqlite v1.11.0
-	github.com/hatami57/microjet/core v0.11.0
-	github.com/hatami57/microjet/gormx v0.2.0
-	github.com/hatami57/microjet/utils v0.11.0
+	github.com/hatami57/microjet/core v0.13.0
+	github.com/hatami57/microjet/gormx v0.13.0
+	github.com/hatami57/microjet/utils v0.13.0
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/telebot.v4 v4.0.0-beta.5
 	gorm.io/gorm v1.31.1
@@ -18,8 +18,8 @@ require (
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/uuid v1.5.0 // indirect
-	github.com/hatami57/microjet/jsonx v0.0.0-00010101000000-000000000000 // indirect
-	github.com/hatami57/microjet/types v0.11.0 // indirect
+	github.com/hatami57/microjet/jsonx v0.12.0 // indirect
+	github.com/hatami57/microjet/types v0.12.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
