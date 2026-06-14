@@ -1,10 +1,8 @@
 package bojet
 
 import (
-	"log/slog"
 	"time"
 
-	"github.com/hatami57/microjet/core"
 	"gopkg.in/telebot.v4"
 )
 
@@ -14,32 +12,30 @@ type Option func(*Bot)
 // WithStore sets the UserStore used for persistent user data.
 // This option is required — Start() returns an error if no store is set.
 func WithStore(store UserStore) Option {
-	return func(b *Bot) { b.store = store }
+	return func(b *Bot) { b.userStore = store }
 }
 
 // WithAdmins sets the Telegram user IDs that have admin privileges.
 func WithAdmins(ids ...int64) Option {
 	return func(b *Bot) {
-		for _, id := range ids {
-			b.adminIDs[id] = struct{}{}
-		}
+		b.config.AdminIDs = ids
 	}
 }
 
 // WithProxy sets an HTTP proxy URL for all Telegram API requests.
 func WithProxy(proxyURL string) Option {
-	return func(b *Bot) { b.proxyURL = proxyURL }
+	return func(b *Bot) { b.config.ProxyURL = proxyURL }
 }
 
 // WithPollTimeout sets the long-polling timeout (default: 10s).
 func WithPollTimeout(d time.Duration) Option {
-	return func(b *Bot) { b.pollTimeout = d }
+	return func(b *Bot) { b.config.PollTimeout = d }
 }
 
 // WithCacheExpiry sets how long a user is cached in memory before being
 // reloaded from the store (default: 30m).
 func WithCacheExpiry(d time.Duration) Option {
-	return func(b *Bot) { b.cacheExpiry = d }
+	return func(b *Bot) { b.config.CacheExpiry = d }
 }
 
 // WithHomePage sets the root navigation page shown to confirmed users.
@@ -73,7 +69,7 @@ func WithPublicAccess() Option {
 // WithContactAdmin enables or disables the "Contact Admin" feature (default: true).
 // When enabled, confirmed users see a button to send messages to all admins.
 func WithContactAdmin(enabled bool) Option {
-	return func(b *Bot) { b.contactAdmin = enabled }
+	return func(b *Bot) { b.config.ContactAdmin = enabled }
 }
 
 // WithMessages overrides specific bot messages. Only non-empty fields are
@@ -144,20 +140,4 @@ func WithMessages(m Messages) Option {
 // tasks. c is nil when called from a background goroutine (e.g. broadcast).
 func WithErrorHandler(fn func(err error, c telebot.Context)) Option {
 	return func(b *Bot) { b.errorHandler = fn }
-}
-
-// WithLogger sets the structured logger used for internal bot diagnostics.
-// The default logger writes info-level text to stdout via core.NewLogger(nil).
-func WithLogger(l *slog.Logger) Option {
-	return func(b *Bot) { b.logger = l }
-}
-
-// WithClock sets the time source used for user cache expiry. Defaults to
-// core.UTC; override it with a fake core.TimeProvider in tests.
-func WithClock(clock core.TimeProvider) Option {
-	return func(b *Bot) {
-		if clock != nil {
-			b.clock = clock
-		}
-	}
 }

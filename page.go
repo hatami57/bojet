@@ -88,7 +88,7 @@ func (b *Bot) userKeyboard(u *User) *telebot.ReplyMarkup {
 		}
 	}
 
-	if b.contactAdmin {
+	if b.config.ContactAdmin {
 		rows = append(rows, rm.Row(rm.Text(b.messages.ContactAdminButton)))
 	}
 

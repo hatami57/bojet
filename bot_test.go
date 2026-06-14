@@ -36,10 +36,11 @@ func TestResolveUserCacheExpiry(t *testing.T) {
 	store := &countingStore{user: &User{ID: 1, FirstName: "Ada"}}
 
 	b := &Bot{
-		store:       store,
-		users:       map[int64]*User{},
-		cacheExpiry: 30 * time.Minute,
-		clock:       clock,
+		userStore: store,
+		users:     map[int64]*User{},
+		config: Config{
+			CacheExpiry: 30 * time.Minute,
+		},
 	}
 
 	// First resolution loads from the store.
@@ -74,11 +75,12 @@ func TestResolveUserRestoresActiveForm(t *testing.T) {
 	store := &countingStore{user: &User{ID: 1, FirstName: "Ada"}}
 
 	b := &Bot{
-		store:       store,
-		users:       map[int64]*User{},
-		cacheExpiry: 30 * time.Minute,
-		clock:       clock,
-		sessions:    NewMemorySessionStore(),
+		userStore: store,
+		users:     map[int64]*User{},
+		config: Config{
+			CacheExpiry: 30 * time.Minute,
+		},
+		sessions: NewMemorySessionStore(),
 	}
 
 	// Resolve once, then simulate an in-progress form being persisted.
@@ -116,14 +118,14 @@ func TestResolveUserRestoresActiveForm(t *testing.T) {
 }
 
 func TestProvisionCreatesConfirmedUser(t *testing.T) {
-	clock := &fakeClock{now: time.Unix(1_700_000_000, 0).UTC()}
 	store := &countingStore{user: nil} // sender is unknown to the store
 
 	b := &Bot{
-		store:        store,
-		users:        map[int64]*User{},
-		cacheExpiry:  30 * time.Minute,
-		clock:        clock,
+		userStore: store,
+		users:     map[int64]*User{},
+		config: Config{
+			CacheExpiry: 30 * time.Minute,
+		},
 		sessions:     NewMemorySessionStore(),
 		registration: &NoRegistrationFlow{},
 		errorHandler: func(error, telebot.Context) {},

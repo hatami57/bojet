@@ -1,19 +1,16 @@
-// Package store provides a SQLite-backed UserStore for bojet, built on
+// Package bojet provides a SQLite-backed UserStore for bojet, built on
 // microjet's database stack: the same pure-Go glebarez/sqlite driver and the
 // generic gormx.Table helpers. Because it shares microjet's driver, a host
 // application can hand its own *gorm.DB to NewWithDB and the bot will store its
 // users in that same database/connection — no second driver, no second handle.
-package store
+package bojet
 
 import (
 	"context"
-	"errors"
 	"time"
 
-	"github.com/hatami57/bojet"
-
-	"github.com/glebarez/sqlite"
 	"github.com/hatami57/microjet/gormx"
+	"github.com/hatami57/microjet/host"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -32,9 +29,9 @@ type userRecord struct {
 }
 
 // TableName keeps the historical "users" table name.
-func (userRecord) TableName() string { return "users" }
+func (userRecord) TableName() string { return "telegram_bot_users" }
 
-func toRecord(u *bojet.User) *userRecord {
+func toRecord(u *User) *userRecord {
 	return &userRecord{
 		TgID:        u.ID,
 		FirstName:   u.FirstName,
@@ -45,8 +42,8 @@ func toRecord(u *bojet.User) *userRecord {
 	}
 }
 
-func (r *userRecord) toUser() *bojet.User {
-	return &bojet.User{
+func (r *userRecord) toUser() *User {
+	return &User{
 		ID:          r.TgID,
 		FirstName:   r.FirstName,
 		LastName:    r.LastName,
@@ -58,31 +55,10 @@ func (r *userRecord) toUser() *bojet.User {
 
 // Store is a SQLite-backed implementation of bojet.UserStore, backed by a
 // gormx.Table over microjet's GORM connection.
-type Store struct {
+type dbStore struct {
+	gormx.BaseRepository
 	db    *gorm.DB
 	users *gormx.Table[userRecord]
-	// externalDB is true when db was supplied by the caller (NewWithDB); in that
-	// case the caller owns the connection and Close must not close it.
-	externalDB bool
-}
-
-// NewStore opens (or creates) a SQLite database at the given path using the same
-// glebarez/sqlite driver microjet uses, migrates the schema, and returns a Store
-// ready to pass to bojet.WithStore(). Store.Close closes the connection.
-func NewStore(path string) (*Store, error) {
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
-	if err != nil {
-		return nil, err
-	}
-	store, err := NewWithDB(db)
-	if err != nil {
-		if sqlDB, dErr := db.DB(); dErr == nil {
-			sqlDB.Close()
-		}
-		return nil, err
-	}
-	store.externalDB = false
-	return store, nil
 }
 
 // NewWithDB wraps an existing *gorm.DB — typically the one microjet's host
@@ -91,32 +67,30 @@ func NewStore(path string) (*Store, error) {
 // retains ownership of db: Store.Close leaves it open.
 //
 //	store, _ := sqlite.NewWithDB(app.DB())
-func NewWithDB(db *gorm.DB) (*Store, error) {
-	if db == nil {
-		return nil, errors.New("sqlite: db is nil")
-	}
-	if err := db.AutoMigrate(&userRecord{}); err != nil {
-		return nil, err
-	}
-	return &Store{db: db, users: gormx.NewTable[userRecord](db), externalDB: true}, nil
+func NewDBStore() UserStore {
+	return &dbStore{}
 }
 
-// Close closes the underlying database connection, unless it was supplied by the
-// caller via NewWithDB (in which case Close is a no-op and the caller closes it).
-func (s *Store) Close() error {
-	if s.externalDB {
-		return nil
-	}
-	sqlDB, err := s.db.DB()
-	if err != nil {
-		return err
-	}
-	return sqlDB.Close()
+func (d *dbStore) Init(app *host.App) error {
+	base := gormx.NewBaseRepository(app.DB())
+	d.BaseRepository = base
+	d.db = app.DB()
+	d.users = gormx.NewTableFor[userRecord](&base)
+	return nil
+}
+
+func (d *dbStore) Setup(app *host.App) error {
+	return app.DB().AutoMigrate(&userRecord{})
+}
+
+// Close do nothing here because the database is external and managed elsewhere.
+func (d *dbStore) Close() error {
+	return nil
 }
 
 // GetUser returns the user with the given Telegram ID, or nil if not found.
-func (s *Store) GetUser(id int64) (*bojet.User, error) {
-	rec, err := s.users.Find(context.Background(), id)
+func (d *dbStore) GetUser(id int64) (*User, error) {
+	rec, err := d.users.Find(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +102,8 @@ func (s *Store) GetUser(id int64) (*bojet.User, error) {
 
 // SaveUser inserts the user, or on Telegram-ID conflict updates only the profile
 // fields — is_confirmed and created_at are preserved across re-registration.
-func (s *Store) SaveUser(u *bojet.User) error {
-	return s.db.WithContext(context.Background()).
+func (d *dbStore) SaveUser(u *User) error {
+	return d.db.WithContext(context.Background()).
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "tg_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"first_name", "last_name", "username", "phone_number"}),
@@ -138,14 +112,14 @@ func (s *Store) SaveUser(u *bojet.User) error {
 }
 
 // SetConfirmed updates the is_confirmed flag for the given user.
-func (s *Store) SetConfirmed(id int64, confirmed bool) error {
-	return s.users.UpdateMap(context.Background(),
+func (d *dbStore) SetConfirmed(id int64, confirmed bool) error {
+	return d.users.UpdateMap(context.Background(),
 		map[string]any{"is_confirmed": confirmed}, "tg_id = ?", id)
 }
 
 // ListConfirmedIDs returns the Telegram IDs of all confirmed users.
-func (s *Store) ListConfirmedIDs() ([]int64, error) {
+func (d *dbStore) ListConfirmedIDs() ([]int64, error) {
 	var ids []int64
-	err := s.users.PluckDistinct(context.Background(), "tg_id", &ids, "is_confirmed = ?", true)
+	err := d.users.PluckDistinct(context.Background(), "tg_id", &ids, "is_confirmed = ?", true)
 	return ids, err
 }

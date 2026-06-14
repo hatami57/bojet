@@ -1,13 +1,14 @@
 package bojet
 
 import (
-	"log/slog"
+	"context"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
 	"github.com/hatami57/microjet/core"
+	"github.com/hatami57/microjet/host"
 	"github.com/robfig/cron/v3"
 	"gopkg.in/telebot.v4"
 )
@@ -16,21 +17,18 @@ import (
 type Bot struct {
 	tb *telebot.Bot
 
-	store        UserStore
+	app          *host.App
+	config       Config
+	adminIDs     map[int64]struct{}
+	userStore    UserStore
 	sessions     SessionStore
 	homePage     *Page
-	adminIDs     map[int64]struct{}
-	proxyURL     string
-	pollTimeout  time.Duration
-	cacheExpiry  time.Duration
 	messages     Messages
 	registration RegistrationFlow
 	errorHandler func(error, telebot.Context)
-	contactAdmin bool
-	logger       *slog.Logger
-	clock        core.TimeProvider
 
 	hooks hooks
+	opts  []Option
 
 	mu    sync.Mutex
 	users map[int64]*User
@@ -46,77 +44,137 @@ type Bot struct {
 //	    bojet.WithAdmins(123456789),
 //	    bojet.WithHomePage(homePage),
 //	)
-func New(token string, opts ...Option) (*Bot, error) {
-	b := &Bot{
-		adminIDs:     map[int64]struct{}{},
-		pollTimeout:  10 * time.Second,
-		cacheExpiry:  30 * time.Minute,
+func New(opts ...Option) *Bot {
+	return &Bot{
 		messages:     DefaultMessages,
 		registration: &PhoneVerificationFlow{},
 		sessions:     NewMemorySessionStore(),
 		users:        map[int64]*User{},
-		contactAdmin: true,
 		errorHandler: func(err error, _ telebot.Context) {},
 		cron:         cron.New(),
-		logger:       core.NewLogger(nil, false),
-		clock:        core.UTC,
+		opts:         opts,
+	}
+}
+
+func (b *Bot) ReadConfig(reader core.ConfigReader) error {
+	return reader.Read("bot", &b.config)
+}
+
+func (b *Bot) Init(app *host.App) error {
+	b.applyOptions()
+
+	for _, id := range b.config.AdminIDs {
+		b.adminIDs[id] = struct{}{}
 	}
 
-	for _, opt := range opts {
-		opt(b)
-	}
-
-	settings := telebot.Settings{
-		Token:  token,
-		Poller: &telebot.LongPoller{Timeout: b.pollTimeout},
-	}
-
-	if b.proxyURL != "" {
-		pu, err := url.Parse(b.proxyURL)
-		if err != nil {
-			return nil, core.NewBadRequestError("Proxy", "invalid proxy URL").
-				WithParams("url", b.proxyURL).WithInner(err)
-		}
-		settings.Client = &http.Client{
-			Transport: &http.Transport{Proxy: http.ProxyURL(pu)},
-		}
-	}
-
-	tb, err := telebot.NewBot(settings)
+	settings, err := b.createSettings()
 	if err != nil {
-		return nil, core.NewInternalError("Telegram", "failed to initialize Telegram bot").WithInner(err)
+		return err
 	}
+
+	tb, err := telebot.NewBot(*settings)
+	if err != nil {
+		return core.NewInternalError("Telegram", "failed to initialize Telegram bot").WithInner(err)
+	}
+
+	b.app = app
+	b.userStore = host.MustResolveService[UserStore](app)
 	b.tb = tb
 	b.buildPublicKeyboard()
 
-	return b, nil
+	return nil
+}
+
+func (b *Bot) applyOptions() {
+	for _, opt := range b.opts {
+		opt(b)
+	}
+}
+
+func (b *Bot) createSettings() (*telebot.Settings, error) {
+	var client *http.Client
+
+	if b.config.ProxyURL != "" {
+		url, err := url.Parse(b.config.ProxyURL)
+		if err != nil {
+			return nil, core.NewBadRequestError("Proxy", "invalid proxy URL").
+				WithParams("url", b.config.ProxyURL).
+				WithInner(err)
+		}
+		client = &http.Client{
+			Transport: &http.Transport{Proxy: http.ProxyURL(url)},
+		}
+	}
+
+	return &telebot.Settings{
+		Token:  b.config.Token,
+		Poller: &telebot.LongPoller{Timeout: b.config.PollTimeout},
+		Client: client,
+	}, nil
 }
 
 // Start registers all handlers, middleware and schedulers, then begins
-// polling Telegram for updates. Blocks until Stop() is called.
-func (b *Bot) Start() error {
-	if b.store == nil {
+// polling Telegram for updates. Run in a go routine.
+func (b *Bot) Start(app *host.App) error {
+	if b.userStore == nil {
 		return ErrStoreRequired
 	}
+
+	b.app.Logger.Info("starting telegram bot")
 
 	b.setupMiddleware()
 	b.setupHandlers()
 	b.registration.SetupHandlers(b)
 	b.cron.Start()
 
-	b.tb.Start()
+	go func() {
+		b.tb.Start()
+	}()
+
 	return nil
 }
 
-// Stop gracefully shuts down the bot and its scheduler.
-func (b *Bot) Stop() {
-	b.cron.Stop()
-	b.tb.Stop()
+// Close implements core.Closer, gracefully stopping the bot.
+func (b *Bot) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	b.stop(ctx)
+
+	return nil
+}
+
+// Stop gracefully shuts down the bot and its scheduler, honoring ctx. If ctx is
+// cancelled or its deadline elapses before shutdown completes, stop returns
+// early and leaves any in-flight work to be reaped by the process exit.
+func (b *Bot) stop(ctx context.Context) {
+	// cron.Stop() returns a context that is done once all running jobs finish.
+	cronDone := b.cron.Stop().Done()
+
+	// telebot.Stop() blocks until polling halts, so run it off the calling
+	// goroutine to keep it cancellable via ctx.
+	tbDone := make(chan struct{})
+	go func() {
+		b.tb.Stop()
+		close(tbDone)
+	}()
+
+	for cronDone != nil || tbDone != nil {
+		select {
+		case <-ctx.Done():
+			b.app.Logger.Warn("bot shutdown timed out", "err", ctx.Err())
+			return
+		case <-cronDone:
+			cronDone = nil
+		case <-tbDone:
+			tbDone = nil
+		}
+	}
 }
 
 // Handle registers a handler for the given endpoint. The handler receives an
 // enriched Context with BotUser() already resolved. Mirrors telebot.Handle().
-func (b *Bot) Handle(endpoint interface{}, h HandlerFunc) {
+func (b *Bot) Handle(endpoint any, h HandlerFunc) {
 	b.tb.Handle(endpoint, func(c telebot.Context) error {
 		user, err := b.resolveUser(c.Sender().ID)
 		if err != nil {
@@ -136,7 +194,7 @@ func (b *Bot) IsAdmin(userID int64) bool {
 // Broadcast sends a plain-text message to all confirmed users concurrently.
 // Delivery errors are routed to the error handler.
 func (b *Bot) Broadcast(msg string) error {
-	ids, err := b.store.ListConfirmedIDs()
+	ids, err := b.userStore.ListConfirmedIDs()
 	if err != nil {
 		return err
 	}
@@ -176,13 +234,13 @@ func (b *Bot) resolveUser(id int64) (*User, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	now := b.clock.Now()
+	now := b.app.Clock.Now()
 	if u, ok := b.users[id]; ok && !u.isExpired(now) {
-		u.resetExpiration(now, b.cacheExpiry)
+		u.resetExpiration(now, b.config.CacheExpiry)
 		return u, nil
 	}
 
-	u, err := b.store.GetUser(id)
+	u, err := b.userStore.GetUser(id)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +250,7 @@ func (b *Bot) resolveUser(id int64) (*User, error) {
 	}
 
 	u.Session = b.loadOrNewSession(id)
-	u.resetExpiration(now, b.cacheExpiry)
+	u.resetExpiration(now, b.config.CacheExpiry)
 	b.users[id] = u
 	return u, nil
 }
@@ -234,7 +292,7 @@ func (b *Bot) deleteSession(id int64) {
 func (b *Bot) cacheUser(u *User) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	u.resetExpiration(b.clock.Now(), b.cacheExpiry)
+	u.resetExpiration(b.app.Clock.Now(), b.config.CacheExpiry)
 	b.users[u.ID] = u
 }
 

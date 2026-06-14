@@ -17,7 +17,7 @@ func (b *Bot) setupMiddleware() {
 				}
 			}
 
-			allowed, err := b.registration.IsAllowed(senderID, b.store)
+			allowed, err := b.registration.IsAllowed(senderID, b.userStore)
 			if err != nil {
 				b.errorHandler(err, c)
 				return c.Send(b.messages.NotAuthorized)

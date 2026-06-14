@@ -53,7 +53,7 @@ func (b *Bot) provision(prov UserProvisioner, sender *telebot.User) (*User, erro
 	if user == nil {
 		return nil, nil
 	}
-	if err := b.store.SaveUser(user); err != nil {
+	if err := b.userStore.SaveUser(user); err != nil {
 		return nil, err
 	}
 	user.Session = newSession(b.homePage)
@@ -113,7 +113,7 @@ func (b *Bot) handleUserMessage(c telebot.Context) error {
 	}
 
 	// Enter the contact-admin flow.
-	if b.contactAdmin && c.Text() == b.messages.ContactAdminButton {
+	if b.config.ContactAdmin && c.Text() == b.messages.ContactAdminButton {
 		user.Session.input = contactAdmin{}
 		return c.Send(b.messages.ContactAdminPrompt, b.cancelKeyboard())
 	}
@@ -142,7 +142,7 @@ func (b *Bot) handleUserMessage(c telebot.Context) error {
 func (b *Bot) handleReplyToUser(c telebot.Context) error {
 	original := c.Message().ReplyTo.OriginalSender
 	if _, err := b.tb.Forward(original, c.Message()); err != nil {
-		b.logger.Error("forward reply to user failed", "user_id", original.ID, "error", err)
+		b.app.Logger.Error("forward reply to user failed", "user_id", original.ID, "error", err)
 		return c.Send(b.messages.ReplyFailed)
 	}
 	return c.Send(b.messages.ReplyDelivered)
@@ -171,7 +171,7 @@ func (b *Bot) handleContact(c telebot.Context) error {
 		Session:     newSession(b.homePage),
 	}
 
-	if err := b.store.SaveUser(user); err != nil {
+	if err := b.userStore.SaveUser(user); err != nil {
 		b.errorHandler(err, c)
 		return c.Send(b.messages.GenericError)
 	}
@@ -207,7 +207,7 @@ func (b *Bot) handleApprove(c telebot.Context) error {
 		return c.Respond(&telebot.CallbackResponse{Text: "Invalid user ID"})
 	}
 
-	if err := b.store.SetConfirmed(userID, true); err != nil {
+	if err := b.userStore.SetConfirmed(userID, true); err != nil {
 		b.errorHandler(err, c)
 		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
 	}
@@ -242,7 +242,7 @@ func (b *Bot) handleReject(c telebot.Context) error {
 		return c.Respond(&telebot.CallbackResponse{Text: "Invalid user ID"})
 	}
 
-	if err := b.store.SetConfirmed(userID, false); err != nil {
+	if err := b.userStore.SetConfirmed(userID, false); err != nil {
 		b.errorHandler(err, c)
 		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
 	}
