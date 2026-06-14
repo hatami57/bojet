@@ -17,6 +17,7 @@ type Bot struct {
 	tb *telebot.Bot
 
 	store        UserStore
+	sessions     SessionStore
 	homePage     *Page
 	adminIDs     map[int64]struct{}
 	proxyURL     string
@@ -52,6 +53,7 @@ func New(token string, opts ...Option) (*Bot, error) {
 		cacheExpiry:  30 * time.Minute,
 		messages:     DefaultMessages,
 		registration: &PhoneVerificationFlow{},
+		sessions:     NewMemorySessionStore(),
 		users:        map[int64]*User{},
 		contactAdmin: true,
 		errorHandler: func(err error, _ telebot.Context) {},
@@ -121,7 +123,7 @@ func (b *Bot) Handle(endpoint interface{}, h HandlerFunc) {
 			b.errorHandler(err, c)
 			return c.Send(b.messages.GenericError)
 		}
-		return h(&botCtx{c, user})
+		return h(&botCtx{Context: c, bot: b, user: user})
 	})
 }
 
@@ -189,10 +191,44 @@ func (b *Bot) resolveUser(id int64) (*User, error) {
 		return nil, nil
 	}
 
-	u.CurrentPage = b.homePage
+	u.Session = b.loadOrNewSession(id)
 	u.resetExpiration(now, b.cacheExpiry)
 	b.users[id] = u
 	return u, nil
+}
+
+// loadOrNewSession returns the persisted session for the user (e.g. an
+// in-progress form whose user-cache entry expired), or a fresh session on the
+// home page when none is stored.
+func (b *Bot) loadOrNewSession(id int64) *Session {
+	if b.sessions != nil {
+		if s, err := b.sessions.LoadSession(id); err != nil {
+			b.errorHandler(err, nil)
+		} else if s != nil {
+			return s
+		}
+	}
+	return newSession(b.homePage)
+}
+
+// saveSession persists the user's current session, if a store is configured.
+func (b *Bot) saveSession(u *User) {
+	if b.sessions == nil || u == nil || u.Session == nil {
+		return
+	}
+	if err := b.sessions.SaveSession(u.ID, u.Session); err != nil {
+		b.errorHandler(err, nil)
+	}
+}
+
+// deleteSession removes any persisted session for the user.
+func (b *Bot) deleteSession(id int64) {
+	if b.sessions == nil {
+		return
+	}
+	if err := b.sessions.DeleteSession(id); err != nil {
+		b.errorHandler(err, nil)
+	}
 }
 
 func (b *Bot) cacheUser(u *User) {

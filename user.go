@@ -2,9 +2,9 @@ package bojet
 
 import "time"
 
-// User represents a registered bot user. Fields are populated from the
-// UserStore; runtime fields (IsSendingMessage, CurrentPage, PageHistory)
-// are managed in-memory and not persisted.
+// User represents a registered bot user. The identity fields are populated
+// from the UserStore and persisted; ephemeral runtime state lives on Session,
+// which is managed in-memory and not written by UserStore.
 type User struct {
 	ID          int64
 	FirstName   string
@@ -13,10 +13,10 @@ type User struct {
 	PhoneNumber string
 	IsConfirmed bool
 
-	// runtime state — not persisted
-	IsSendingMessage bool
-	CurrentPage      *Page
-	PageHistory      PageHistory
+	// Session holds ephemeral runtime state (current page, form progress,
+	// scratch data). It is not persisted by UserStore and is always non-nil
+	// for a user resolved through the bot.
+	Session *Session
 
 	expireAt time.Time
 }

@@ -47,10 +47,27 @@ func WithHomePage(page *Page) Option {
 	return func(b *Bot) { b.homePage = page }
 }
 
+// WithSessionStore sets the store used to persist in-progress form sessions
+// (default: an in-memory store). Pass a custom implementation to survive
+// restarts, or nil to disable session persistence entirely.
+func WithSessionStore(store SessionStore) Option {
+	return func(b *Bot) { b.sessions = store }
+}
+
 // WithRegistrationFlow replaces the default PhoneVerificationFlow.
 // Use NoRegistrationFlow for open bots, or supply a custom implementation.
 func WithRegistrationFlow(flow RegistrationFlow) Option {
 	return func(b *Bot) { b.registration = flow }
+}
+
+// WithPublicAccess makes the bot open to everyone: senders are provisioned on
+// first contact with no admin approval. It is shorthand for
+// WithRegistrationFlow(&NoRegistrationFlow{}).
+//
+// The default (no option) keeps the admin-approval flow, where users share
+// their phone number and an admin must approve them before use.
+func WithPublicAccess() Option {
+	return func(b *Bot) { b.registration = &NoRegistrationFlow{} }
 }
 
 // WithContactAdmin enables or disables the "Contact Admin" feature (default: true).
@@ -104,6 +121,21 @@ func WithMessages(m Messages) Option {
 		}
 		if m.GenericError != "" {
 			b.messages.GenericError = m.GenericError
+		}
+		if m.CancelButton != "" {
+			b.messages.CancelButton = m.CancelButton
+		}
+		if m.ContactAdminCancelled != "" {
+			b.messages.ContactAdminCancelled = m.ContactAdminCancelled
+		}
+		if m.FormDoneButton != "" {
+			b.messages.FormDoneButton = m.FormDoneButton
+		}
+		if m.FormCancelled != "" {
+			b.messages.FormCancelled = m.FormCancelled
+		}
+		if m.FormInvalidChoice != "" {
+			b.messages.FormInvalidChoice = m.FormInvalidChoice
 		}
 	}
 }

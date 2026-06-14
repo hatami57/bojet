@@ -14,6 +14,17 @@ type RegistrationFlow interface {
 	IsAllowed(userID int64, store UserStore) (bool, error)
 }
 
+// UserProvisioner is an optional RegistrationFlow extension for open/public
+// bots. When a flow implements it, the bot provisions (creates and persists) a
+// user on first contact instead of rejecting unknown senders. Flows that gate
+// access behind approval (the default) do not implement it, so unknown senders
+// are turned away until registered.
+type UserProvisioner interface {
+	// Provision builds the User to persist for a first-time sender, or returns
+	// nil to decline (falling back to the not-authorized path).
+	Provision(sender *telebot.User) *User
+}
+
 // PhoneVerificationFlow is the default flow: users share their phone number
 // and an admin must approve them before they can interact with the bot.
 type PhoneVerificationFlow struct{}
@@ -38,12 +49,25 @@ func (f *PhoneVerificationFlow) IsAllowed(userID int64, store UserStore) (bool, 
 	return user.IsConfirmed, nil
 }
 
-// NoRegistrationFlow admits all users without any verification.
-// Useful for public bots or bots that manage access at the handler level.
+// NoRegistrationFlow admits all users without any verification and provisions
+// them on first contact. Use it (or WithPublicAccess) for public bots open to
+// everyone with no admin approval step.
 type NoRegistrationFlow struct{}
 
 func (f *NoRegistrationFlow) SetupHandlers(_ *Bot) {}
 
 func (f *NoRegistrationFlow) IsAllowed(_ int64, _ UserStore) (bool, error) {
 	return true, nil
+}
+
+// Provision creates a confirmed user from the sender's Telegram profile, so
+// public users are persisted (and reachable via Broadcast) on first contact.
+func (f *NoRegistrationFlow) Provision(sender *telebot.User) *User {
+	return &User{
+		ID:          sender.ID,
+		FirstName:   sender.FirstName,
+		LastName:    sender.LastName,
+		Username:    sender.Username,
+		IsConfirmed: true,
+	}
 }

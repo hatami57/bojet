@@ -26,8 +26,8 @@ type navAction struct{ page *Page }
 
 func (a *navAction) execute(c Context, b *Bot) error {
 	u := c.BotUser()
-	u.PageHistory.Push(u.CurrentPage)
-	u.CurrentPage = a.page
+	u.Session.PageHistory.Push(u.Session.CurrentPage)
+	u.Session.CurrentPage = a.page
 	return c.Send(a.page.Title, b.userKeyboard(u))
 }
 
@@ -71,19 +71,19 @@ func (p *Page) processText(text string, c Context, b *Bot) (bool, error) {
 
 // keyboard builds the reply keyboard for this page.
 func (b *Bot) userKeyboard(u *User) *telebot.ReplyMarkup {
-	if u == nil || u.IsSendingMessage {
+	if u == nil || u.Session == nil {
 		return nil
 	}
 
 	rm := &telebot.ReplyMarkup{ResizeKeyboard: true, OneTimeKeyboard: true}
 	var rows []telebot.Row
 
-	if !u.PageHistory.IsEmpty() {
+	if !u.Session.PageHistory.IsEmpty() {
 		rows = append(rows, rm.Row(rm.Text(PageBackText)))
 	}
 
-	if u.CurrentPage != nil {
-		for _, item := range u.CurrentPage.items {
+	if u.Session.CurrentPage != nil {
+		for _, item := range u.Session.CurrentPage.items {
 			rows = append(rows, rm.Row(rm.Text(item.title)))
 		}
 	}

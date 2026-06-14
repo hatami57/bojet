@@ -8,14 +8,58 @@ import (
 )
 
 func (b *Bot) setupHandlers() {
-	b.tb.Handle("/start", func(c telebot.Context) error {
-		return c.Send(b.messages.Welcome, b.publicKeyboard)
-	})
+	b.tb.Handle("/start", b.handleStart)
 
 	b.tb.Handle(telebot.OnText, b.messageHandler)
 	b.tb.Handle(telebot.OnVoice, b.messageHandler)
 	b.tb.Handle(telebot.OnAudio, b.messageHandler)
 	b.tb.Handle(telebot.OnVideo, b.messageHandler)
+}
+
+// handleStart greets a /start. On a public bot (a flow implementing
+// UserProvisioner) it provisions the sender and shows the home menu; otherwise
+// it shows the registration welcome (e.g. the share-phone prompt).
+func (b *Bot) handleStart(c telebot.Context) error {
+	if prov, ok := b.registration.(UserProvisioner); ok {
+		user, err := b.provision(prov, c.Sender())
+		if err != nil {
+			b.errorHandler(err, c)
+			return c.Send(b.messages.GenericError)
+		}
+		if user != nil {
+			title := b.messages.Welcome
+			if b.homePage != nil {
+				title = b.homePage.Title
+			}
+			return c.Send(title, b.userKeyboard(user))
+		}
+	}
+	return c.Send(b.messages.Welcome, b.publicKeyboard)
+}
+
+// provision returns the existing user for the sender, or creates, persists and
+// caches a new one via the flow's UserProvisioner. Returns nil if the flow
+// declines to provision.
+func (b *Bot) provision(prov UserProvisioner, sender *telebot.User) (*User, error) {
+	existing, err := b.resolveUser(sender.ID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return existing, nil
+	}
+
+	user := prov.Provision(sender)
+	if user == nil {
+		return nil, nil
+	}
+	if err := b.store.SaveUser(user); err != nil {
+		return nil, err
+	}
+	user.Session = newSession(b.homePage)
+	b.cacheUser(user)
+	b.fireHooks(b.hooks.onUserRegistered, user)
+	return user, nil
 }
 
 func (b *Bot) messageHandler(c telebot.Context) error {
@@ -40,34 +84,49 @@ func (b *Bot) handleUserMessage(c telebot.Context) error {
 		return c.Send(b.messages.GenericError)
 	}
 	if user == nil {
-		return c.Send(b.messages.NotAuthorized, b.publicKeyboard)
-	}
-
-	// Contact-admin forwarding flow.
-	if user.IsSendingMessage {
-		user.IsSendingMessage = false
-		for adminID := range b.adminIDs {
-			if _, err := b.tb.Forward(&telebot.User{ID: adminID}, c.Message()); err != nil {
-				return c.Send(b.messages.MessageSendFailed)
+		// Public bots provision unknown senders on first contact instead of
+		// rejecting them.
+		if prov, ok := b.registration.(UserProvisioner); ok {
+			user, err = b.provision(prov, c.Sender())
+			if err != nil {
+				b.errorHandler(err, c)
+				return c.Send(b.messages.GenericError)
 			}
 		}
-		return c.Send(b.messages.MessageSent, b.userKeyboard(user))
+		if user == nil {
+			return c.Send(b.messages.NotAuthorized, b.publicKeyboard)
+		}
 	}
 
+	bc := &botCtx{Context: c, bot: b, user: user}
+
+	// An active input state (questionnaire, contact-admin, …) consumes the
+	// message instead of treating it as menu navigation.
+	if st := user.Session.input; st != nil {
+		next, err := st.handle(bc, b)
+		if err != nil {
+			b.errorHandler(err, c)
+			return c.Send(b.messages.GenericError, b.userKeyboard(user))
+		}
+		user.Session.input = next
+		return nil
+	}
+
+	// Enter the contact-admin flow.
 	if b.contactAdmin && c.Text() == b.messages.ContactAdminButton {
-		user.IsSendingMessage = true
-		return c.Send(b.messages.ContactAdminPrompt)
+		user.Session.input = contactAdmin{}
+		return c.Send(b.messages.ContactAdminPrompt, b.cancelKeyboard())
 	}
 
 	// Back navigation.
-	if !user.PageHistory.IsEmpty() && c.Text() == PageBackText {
-		user.CurrentPage = user.PageHistory.Pop()
-		return c.Send(user.CurrentPage.Title, b.userKeyboard(user))
+	if !user.Session.PageHistory.IsEmpty() && c.Text() == PageBackText {
+		user.Session.CurrentPage = user.Session.PageHistory.Pop()
+		return c.Send(user.Session.CurrentPage.Title, b.userKeyboard(user))
 	}
 
 	// Page item navigation.
-	if user.CurrentPage != nil {
-		matched, err := user.CurrentPage.processText(c.Text(), &botCtx{c, user}, b)
+	if user.Session.CurrentPage != nil {
+		matched, err := user.Session.CurrentPage.processText(c.Text(), bc, b)
 		if err != nil {
 			b.errorHandler(err, c)
 			return c.Send(b.messages.GenericError, b.userKeyboard(user))
@@ -109,7 +168,7 @@ func (b *Bot) handleContact(c telebot.Context) error {
 		Username:    c.Sender().Username,
 		PhoneNumber: contact.PhoneNumber,
 		IsConfirmed: false,
-		CurrentPage: b.homePage,
+		Session:     newSession(b.homePage),
 	}
 
 	if err := b.store.SaveUser(user); err != nil {

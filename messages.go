@@ -17,6 +17,15 @@ type Messages struct {
 	ReplyFailed         string
 	UnknownCommand      string
 	GenericError        string
+
+	// Shared capture-prompt strings (forms and contact-admin).
+	CancelButton          string
+	ContactAdminCancelled string
+
+	// Form (questionnaire) strings.
+	FormDoneButton    string
+	FormCancelled     string
+	FormInvalidChoice string
 }
 
 // DefaultMessages is the out-of-the-box English message set.
@@ -35,4 +44,11 @@ var DefaultMessages = Messages{
 	ReplyFailed:         "⚠️ Failed to send reply to user.",
 	UnknownCommand:      "⚠️ Unknown command",
 	GenericError:        "⚠️ An error has occurred, please try again later.",
+
+	CancelButton:          "✖️ Cancel",
+	ContactAdminCancelled: "Cancelled.",
+
+	FormDoneButton:    "✅ Done",
+	FormCancelled:     "Form cancelled.",
+	FormInvalidChoice: "⚠️ Please choose one of the provided options.",
 }
