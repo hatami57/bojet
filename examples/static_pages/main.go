@@ -5,20 +5,12 @@
 package main
 
 import (
-	"log"
-
 	"github.com/hatami57/bojet"
-	"github.com/hatami57/bojet/store"
-	"github.com/hatami57/microjet/utils"
+	"github.com/hatami57/microjet/gormx/sqlite"
+	"github.com/hatami57/microjet/host"
 )
 
 func main() {
-	store, err := store.NewStore("./static.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
 	// --- Build a fixed page tree ---
 
 	// Leaf pages — no sub-navigation, just text responses.
@@ -83,18 +75,11 @@ func main() {
 		}),
 	)
 
-	bot, err := bojet.New(
-		utils.GetEnvString("BOT_TOKEN", ""),
-		bojet.WithStore(store),
-		bojet.WithAdmins(123456789),
-		bojet.WithHomePage(homePage),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("started")
-	if err := bot.Start(); err != nil {
-		log.Fatal(err)
-	}
+	host.MustNew().
+		WithDatabase(sqlite.Driver()).
+		WithModule(bojet.Module(
+			bojet.WithPublicAccess(),
+			bojet.WithHomePage(homePage),
+		)).
+		MustRun()
 }

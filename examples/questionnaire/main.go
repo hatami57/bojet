@@ -14,12 +14,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/hatami57/bojet"
-	"github.com/hatami57/bojet/store"
-	"github.com/hatami57/microjet/utils"
+	"github.com/hatami57/microjet/gormx/sqlite"
+	"github.com/hatami57/microjet/host"
 )
 
 // --- A pretend questions table -------------------------------------------------
@@ -39,12 +38,6 @@ var questionBank = []dbQuestion{
 }
 
 func main() {
-	st, err := store.NewStore("./questionnaire.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer st.Close()
-
 	// --- Static, linear form -------------------------------------------------
 	feedback := &bojet.Form{
 		ID:        "feedback",
@@ -116,20 +109,13 @@ func main() {
 		bojet.FormItem("📊 Take the survey", survey),
 	)
 
-	bot, err := bojet.New(
-		utils.GetEnvString("BOT_TOKEN", ""),
-		bojet.WithStore(st),
-		bojet.WithAdmins(123456789),
-		bojet.WithHomePage(home),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("started")
-	if err := bot.Start(); err != nil {
-		log.Fatal(err)
-	}
+	host.MustNew().
+		WithDatabase(sqlite.Driver()).
+		WithModule(bojet.Module(
+			bojet.WithPublicAccess(),
+			bojet.WithHomePage(home),
+		)).
+		MustRun()
 }
 
 func toQuestion(dbq dbQuestion) *bojet.Question {

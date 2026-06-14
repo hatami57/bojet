@@ -1,0 +1,9 @@
+[app]
+name = "bojet-simple"
+
+[bot]
+# Set your bot token here, or export APP_BOT_TOKEN instead.
+token = ""
+
+[database]
+name = "./simple.db"

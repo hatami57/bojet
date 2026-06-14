@@ -9,12 +9,6 @@ import (
 // Option configures a Bot at construction time.
 type Option func(*Bot)
 
-// WithStore sets the UserStore used for persistent user data.
-// This option is required — Start() returns an error if no store is set.
-func WithStore(store UserStore) Option {
-	return func(b *Bot) { b.userStore = store }
-}
-
 // WithAdmins sets the Telegram user IDs that have admin privileges.
 func WithAdmins(ids ...int64) Option {
 	return func(b *Bot) {
@@ -140,4 +134,61 @@ func WithMessages(m Messages) Option {
 // tasks. c is nil when called from a background goroutine (e.g. broadcast).
 func WithErrorHandler(fn func(err error, c telebot.Context)) Option {
 	return func(b *Bot) { b.errorHandler = fn }
+}
+
+// WithHandler registers a custom handler for the given Telegram endpoint
+// (command, button, or telebot event). The handler receives an enriched
+// Context with BotUser() already resolved. Mirrors Bot.Handle, but as an
+// option so the whole bot can be configured through Module.
+//
+//	bojet.WithHandler("/help", func(c bojet.Context) error {
+//	    return c.Send("Use the menu buttons below.")
+//	})
+func WithHandler(endpoint any, h HandlerFunc) Option {
+	return func(b *Bot) {
+		b.pendingHandlers = append(b.pendingHandlers, pendingHandler{endpoint: endpoint, handler: h})
+	}
+}
+
+// WithOnUserRegistered registers a callback invoked when a new user submits
+// their phone number (or is provisioned on a public bot).
+func WithOnUserRegistered(fn func(*User) error) Option {
+	return func(b *Bot) { b.hooks.onUserRegistered = append(b.hooks.onUserRegistered, fn) }
+}
+
+// WithOnUserApproved registers a callback invoked when an admin approves a user.
+func WithOnUserApproved(fn func(*User) error) Option {
+	return func(b *Bot) { b.hooks.onUserApproved = append(b.hooks.onUserApproved, fn) }
+}
+
+// WithOnUserRejected registers a callback invoked when an admin rejects a user.
+func WithOnUserRejected(fn func(*User) error) Option {
+	return func(b *Bot) { b.hooks.onUserRejected = append(b.hooks.onUserRejected, fn) }
+}
+
+// WithSchedule registers a recurring job using a standard cron expression.
+// Mirrors Bot.Schedule, but as an option.
+//
+//	bojet.WithSchedule("0 9 * * *", func() { /* ... */ })
+func WithSchedule(expr string, fn func()) Option {
+	return func(b *Bot) {
+		b.pendingSchedules = append(b.pendingSchedules, pendingSchedule{expr: expr, fn: fn})
+	}
+}
+
+// WithScheduledBroadcast schedules a recurring broadcast of msg to all confirmed
+// users using a standard cron expression.
+//
+//	bojet.WithScheduledBroadcast("0 9 * * *", "🌅 Good morning!")
+func WithScheduledBroadcast(expr string, msg string) Option {
+	return func(b *Bot) {
+		b.pendingSchedules = append(b.pendingSchedules, pendingSchedule{
+			expr: expr,
+			fn: func() {
+				if err := b.Broadcast(msg); err != nil {
+					b.errorHandler(err, nil)
+				}
+			},
+		})
+	}
 }

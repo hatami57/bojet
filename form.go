@@ -149,10 +149,10 @@ type Form struct {
 // formState is the in-progress runtime state of a form, held on the session.
 type formState struct {
 	form     *Form
-	pending  *Question  // the question currently awaiting an answer
-	answers  Answers    // answers collected so far
+	pending  *Question   // the question currently awaiting an answer
+	answers  Answers     // answers collected so far
 	history  []*Question // BackAllow questions answered so far, for back-navigation
-	selected []string   // in-progress MultiChoice selections for pending
+	selected []string    // in-progress MultiChoice selections for pending
 }
 
 // resolveBack collapses BackInherit to a concrete allow/deny for a question.

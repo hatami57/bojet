@@ -6,13 +6,12 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"time"
 
 	"github.com/hatami57/bojet"
-	"github.com/hatami57/bojet/store"
-	"github.com/hatami57/microjet/utils"
+	"github.com/hatami57/microjet/gormx/sqlite"
+	"github.com/hatami57/microjet/host"
 )
 
 // --- Mock data layer ---------------------------------------------------------
@@ -55,14 +54,6 @@ func fetchWeatherForecast() string {
 // -----------------------------------------------------------------------------
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
-	store, err := store.NewStore("./dynamic.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
 	// --- Page tree ---
 	// The structure (items) is static. The CONTENT each item sends is computed
 	// fresh on every button press.
@@ -126,20 +117,13 @@ func main() {
 		bojet.NavItem("👤 My Profile", profilePage),
 	)
 
-	bot, err := bojet.New(
-		utils.GetEnvString("BOT_TOKEN", ""),
-		bojet.WithStore(store),
-		bojet.WithAdmins(123456789),
-		bojet.WithHomePage(homePage),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("started")
-	if err := bot.Start(); err != nil {
-		log.Fatal(err)
-	}
+	host.MustNew().
+		WithDatabase(sqlite.Driver()).
+		WithModule(bojet.Module(
+			bojet.WithPublicAccess(),
+			bojet.WithHomePage(homePage),
+		)).
+		MustRun()
 }
 
 func confirmationStatus(confirmed bool) string {

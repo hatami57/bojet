@@ -22,11 +22,9 @@ type Config struct {
 	ContactAdmin bool          `mapstructure:"contactAdmin"`
 }
 
-// WithConfig applies all configurable BotConfig fields as bot options.
-// It is designed to be used alongside LoadConfig():
-//
-//	cfg, _ := bojet.LoadConfig()
-//	bot, err := bojet.New(cfg.Bot.Token, bojet.WithConfig(cfg.Bot), ...)
+// WithConfig applies all configurable Config fields as bot options. The host
+// normally populates Config from the [bot] section automatically (see
+// Bot.ReadConfig); use this only to inject a Config you built yourself.
 func WithConfig(cfg *Config) Option {
 	return func(b *Bot) {
 		if cfg == nil {

@@ -61,12 +61,10 @@ type dbStore struct {
 	users *gormx.Table[userRecord]
 }
 
-// NewWithDB wraps an existing *gorm.DB — typically the one microjet's host
-// already opened (app.DB()) — migrates the users schema, and returns a Store
-// that shares that connection with the rest of the application. The caller
-// retains ownership of db: Store.Close leaves it open.
-//
-//	store, _ := sqlite.NewWithDB(app.DB())
+// NewDBStore returns the default UserStore. It is a service: the host injects
+// the shared *gorm.DB (app.DB()) during Init and migrates the users schema in
+// Setup, so the bot stores its users in the same database as the rest of the
+// application. Module registers it automatically.
 func NewDBStore() UserStore {
 	return &dbStore{}
 }

@@ -38,6 +38,7 @@ func TestResolveUserCacheExpiry(t *testing.T) {
 	b := &Bot{
 		userStore: store,
 		users:     map[int64]*User{},
+		clock:     clock,
 		config: Config{
 			CacheExpiry: 30 * time.Minute,
 		},
@@ -77,6 +78,7 @@ func TestResolveUserRestoresActiveForm(t *testing.T) {
 	b := &Bot{
 		userStore: store,
 		users:     map[int64]*User{},
+		clock:     clock,
 		config: Config{
 			CacheExpiry: 30 * time.Minute,
 		},
@@ -118,11 +120,13 @@ func TestResolveUserRestoresActiveForm(t *testing.T) {
 }
 
 func TestProvisionCreatesConfirmedUser(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0).UTC()}
 	store := &countingStore{user: nil} // sender is unknown to the store
 
 	b := &Bot{
 		userStore: store,
 		users:     map[int64]*User{},
+		clock:     clock,
 		config: Config{
 			CacheExpiry: 30 * time.Minute,
 		},

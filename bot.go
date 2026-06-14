@@ -29,6 +29,13 @@ type Bot struct {
 
 	hooks hooks
 	opts  []Option
+	clock core.TimeProvider
+
+	// pendingHandlers and pendingSchedules hold custom handlers and cron jobs
+	// registered via options before the bot starts. They are applied in Start,
+	// once the Telegram client and scheduler exist.
+	pendingHandlers  []pendingHandler
+	pendingSchedules []pendingSchedule
 
 	mu    sync.Mutex
 	users map[int64]*User
@@ -37,12 +44,14 @@ type Bot struct {
 	publicKeyboard *telebot.ReplyMarkup
 }
 
-// New creates a Bot with the given Telegram token and options.
+// New creates a Bot from the given options. It is normally not called directly;
+// use Module so the host wires the bot, its user store, and the database
+// together. The Telegram token and other settings come from the [bot] config
+// section (see Config), with options taking precedence.
 //
-//	bot, err := bojet.New(os.Getenv("BOT_TOKEN"),
-//	    bojet.WithStore(store),
-//	    bojet.WithAdmins(123456789),
+//	bojet.Module(
 //	    bojet.WithHomePage(homePage),
+//	    bojet.WithAdmins(123456789),
 //	)
 func New(opts ...Option) *Bot {
 	return &Bot{
@@ -52,11 +61,16 @@ func New(opts ...Option) *Bot {
 		users:        map[int64]*User{},
 		errorHandler: func(err error, _ telebot.Context) {},
 		cron:         cron.New(),
+		clock:        core.UTC,
+		adminIDs:     map[int64]struct{}{},
 		opts:         opts,
 	}
 }
 
 func (b *Bot) ReadConfig(reader core.ConfigReader) error {
+	reader.SetDefault("bot.pollTimeout", "10s")
+	reader.SetDefault("bot.cacheExpiry", "30m")
+	reader.SetDefault("bot.contactAdmin", true)
 	return reader.Read("bot", &b.config)
 }
 
@@ -78,6 +92,7 @@ func (b *Bot) Init(app *host.App) error {
 	}
 
 	b.app = app
+	b.clock = app.Clock
 	b.userStore = host.MustResolveService[UserStore](app)
 	b.tb = tb
 	b.buildPublicKeyboard()
@@ -125,6 +140,15 @@ func (b *Bot) Start(app *host.App) error {
 	b.setupMiddleware()
 	b.setupHandlers()
 	b.registration.SetupHandlers(b)
+
+	for _, ph := range b.pendingHandlers {
+		b.Handle(ph.endpoint, ph.handler)
+	}
+	for _, ps := range b.pendingSchedules {
+		if _, err := b.cron.AddFunc(ps.expr, ps.fn); err != nil {
+			return err
+		}
+	}
 	b.cron.Start()
 
 	go func() {
@@ -132,6 +156,18 @@ func (b *Bot) Start(app *host.App) error {
 	}()
 
 	return nil
+}
+
+// pendingHandler is a custom Telegram handler queued via WithHandler.
+type pendingHandler struct {
+	endpoint any
+	handler  HandlerFunc
+}
+
+// pendingSchedule is a cron job queued via WithSchedule/WithScheduledBroadcast.
+type pendingSchedule struct {
+	expr string
+	fn   func()
 }
 
 // Close implements core.Closer, gracefully stopping the bot.
@@ -234,7 +270,7 @@ func (b *Bot) resolveUser(id int64) (*User, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	now := b.app.Clock.Now()
+	now := b.clock.Now()
 	if u, ok := b.users[id]; ok && !u.isExpired(now) {
 		u.resetExpiration(now, b.config.CacheExpiry)
 		return u, nil
@@ -292,7 +328,7 @@ func (b *Bot) deleteSession(id int64) {
 func (b *Bot) cacheUser(u *User) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	u.resetExpiration(b.app.Clock.Now(), b.config.CacheExpiry)
+	u.resetExpiration(b.clock.Now(), b.config.CacheExpiry)
 	b.users[u.ID] = u
 }
 

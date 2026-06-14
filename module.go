@@ -16,7 +16,7 @@ func Module(opts ...Option) *BojetModule {
 
 func (b *BojetModule) Register(app *host.App) error {
 	app.ProvideService(host.ProvideType(New(b.opts...)))
-	host.ProvideType(NewDBStore())
+	app.ProvideService(host.ProvideType(NewDBStore()))
 
 	return app.Err()
 }

@@ -4,7 +4,7 @@ import "github.com/hatami57/microjet/core"
 
 // Bot startup / configuration errors.
 var (
-	ErrStoreRequired = core.NewInternalError("Config", "UserStore is required — use WithStore()")
+	ErrStoreRequired = core.NewInternalError("Config", "UserStore is required — register one with the app (Module provides the default SQLite store)")
 )
 
 // Registration / authorization errors.

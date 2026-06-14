@@ -1,0 +1,15 @@
+[app]
+name = "bojet-complex"
+
+[bot]
+# Set your bot token here, or export APP_BOT_TOKEN instead.
+token = ""
+# Telegram user IDs with admin privileges.
+adminIds = [123456789]
+# Optional HTTP proxy for the Telegram API.
+proxyUrl = ""
+cacheExpiry = "15m"
+contactAdmin = true
+
+[database]
+name = "./complex.db"

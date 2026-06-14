@@ -1,34 +1,24 @@
 // Complex example: phone verification, multi-level pages, event hooks,
-// Persian messages, scheduled broadcast, and a custom error handler.
+// Persian messages, scheduled broadcasts, and a custom error handler — all
+// configured declaratively through bojet.Module and run by the microjet host.
+//
+// Admins, the Telegram token, and the database path come from config.toml (or
+// APP_* environment variables). The whole bot is described by options, so there
+// is no imperative wiring after construction.
 package main
 
 import (
-	"log"
-	"strconv"
-	"strings"
-	"time"
+	"gopkg.in/telebot.v4"
 
 	"github.com/hatami57/bojet"
-	"github.com/hatami57/bojet/store"
-
 	"github.com/hatami57/microjet/core"
-	"github.com/hatami57/microjet/utils"
-	"gopkg.in/telebot.v4"
+	"github.com/hatami57/microjet/gormx/sqlite"
+	"github.com/hatami57/microjet/host"
 )
 
 func main() {
-	// Structured logger from microjet/core (text by default; set LOG_FORMAT=json
-	// or LOG_LEVEL=debug to change it without touching code).
-	logger := core.NewLogger(&core.LogConfig{
-		Level:  utils.GetEnvString("LOG_LEVEL", "info"),
-		Format: utils.GetEnvString("LOG_FORMAT", "text"),
-	}, false)
-
-	store, err := store.NewStore("./complex.db")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
+	// Structured logger from microjet/core, used by the hooks and error handler.
+	logger := core.NewLogger(&core.LogConfig{Level: "info", Format: "text"}, false)
 
 	// --- Page tree ---
 	supportPage := bojet.NewPage(
@@ -61,87 +51,53 @@ func main() {
 		}),
 	)
 
-	// --- Bot ---
-	bot, err := bojet.New(
-		utils.GetEnvString("BOT_TOKEN", ""),
-		bojet.WithStore(store),
-		bojet.WithAdmins(adminIDsFromEnv()...),
-		bojet.WithProxy(utils.GetEnvString("BOT_PROXY_URL", "")),
-		bojet.WithHomePage(homePage),
-		bojet.WithCacheExpiry(15*time.Minute),
-		bojet.WithLogger(logger),
+	host.MustNew().
+		WithDatabase(sqlite.Driver()).
+		WithModule(bojet.Module(
+			// Admins and the token are read from the [bot] config section.
+			bojet.WithHomePage(homePage),
 
-		// Override only the strings you need.
-		bojet.WithMessages(bojet.Messages{
-			Welcome:             "سلام! برای ثبت‌نام شماره تلفن خود را به اشتراک بگذارید:",
-			SharePhoneButton:    "📱 اشتراک‌گذاری شماره",
-			ContactAdminButton:  "📞 تماس با ادمین",
-			NotAuthorized:       "⛔ دسترسی ندارید. لطفاً منتظر تأیید ادمین بمانید.",
-			RegistrationPending: "✅ درخواست شما ثبت شد. منتظر تأیید ادمین باشید.",
-			Approved:            "🎉 درخواست شما تأیید شد! اکنون می‌توانید از ربات استفاده کنید.",
-			Rejected:            "🚫 متأسفانه درخواست شما رد شد.",
-		}),
+			// Override only the strings you need.
+			bojet.WithMessages(bojet.Messages{
+				Welcome:             "سلام! برای ثبت‌نام شماره تلفن خود را به اشتراک بگذارید:",
+				SharePhoneButton:    "📱 اشتراک‌گذاری شماره",
+				ContactAdminButton:  "📞 تماس با ادمین",
+				NotAuthorized:       "⛔ دسترسی ندارید. لطفاً منتظر تأیید ادمین بمانید.",
+				RegistrationPending: "✅ درخواست شما ثبت شد. منتظر تأیید ادمین باشید.",
+				Approved:            "🎉 درخواست شما تأیید شد! اکنون می‌توانید از ربات استفاده کنید.",
+				Rejected:            "🚫 متأسفانه درخواست شما رد شد.",
+			}),
 
-		bojet.WithErrorHandler(func(err error, c telebot.Context) {
-			if c != nil {
-				logger.Error("handler error", "user_id", c.Sender().ID, "error", err)
-			} else {
-				logger.Error("background error", "error", err)
-			}
-		}),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
+			// Event hooks.
+			bojet.WithOnUserRegistered(func(u *bojet.User) error {
+				logger.Info("new registration", "user", u.String(), "phone", u.PhoneNumber)
+				return nil
+			}),
+			bojet.WithOnUserApproved(func(u *bojet.User) error {
+				logger.Info("user approved", "user", u.String())
+				return nil
+			}),
+			bojet.WithOnUserRejected(func(u *bojet.User) error {
+				logger.Info("user rejected", "user", u.String())
+				return nil
+			}),
 
-	// --- Event hooks ---
-	bot.OnUserRegistered(func(u *bojet.User) error {
-		logger.Info("new registration", "user", u.String(), "phone", u.PhoneNumber)
-		return nil
-	})
+			// Custom command.
+			bojet.WithHandler("/help", func(c bojet.Context) error {
+				return c.Send("از دکمه‌های منو برای ناوبری استفاده کنید.")
+			}),
 
-	bot.OnUserApproved(func(u *bojet.User) error {
-		logger.Info("user approved", "user", u.String())
-		return nil
-	})
+			// Scheduled broadcasts.
+			bojet.WithScheduledBroadcast("0 9 * * *", "🌅 صبح بخیر!"),
+			bojet.WithScheduledBroadcast("0 20 * * 5", "🎉 آخر هفته مبارک!"),
 
-	bot.OnUserRejected(func(u *bojet.User) error {
-		logger.Info("user rejected", "user", u.String())
-		return nil
-	})
-
-	// --- Custom commands ---
-	bot.Handle("/help", func(c bojet.Context) error {
-		return c.Send("از دکمه‌های منو برای ناوبری استفاده کنید.")
-	})
-
-	// --- Scheduled messages ---
-	if err := bot.ScheduleBroadcast("0 9 * * *", "🌅 صبح بخیر!"); err != nil {
-		log.Fatal(err)
-	}
-	if err := bot.ScheduleBroadcast("0 20 * * 5", "🎉 آخر هفته مبارک!"); err != nil {
-		log.Fatal(err)
-	}
-
-	logger.Info("bot started")
-	if err := bot.Start(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-// adminIDsFromEnv parses BOT_ADMIN_IDS (a comma-separated list of Telegram user
-// IDs) using microjet's utils.GetEnvString for the lookup.
-func adminIDsFromEnv() []int64 {
-	raw := utils.GetEnvString("BOT_ADMIN_IDS", "")
-	var ids []int64
-	for _, part := range strings.Split(raw, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if id, err := strconv.ParseInt(part, 10, 64); err == nil {
-			ids = append(ids, id)
-		}
-	}
-	return ids
+			bojet.WithErrorHandler(func(err error, c telebot.Context) {
+				if c != nil {
+					logger.Error("handler error", "user_id", c.Sender().ID, "error", err)
+				} else {
+					logger.Error("background error", "error", err)
+				}
+			}),
+		)).
+		MustRun()
 }
