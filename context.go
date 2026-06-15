@@ -1,6 +1,9 @@
 package bojet
 
-import "gopkg.in/telebot.v4"
+import (
+	"github.com/hatami57/microjet/host"
+	"gopkg.in/telebot.v4"
+)
 
 // HandlerFunc is the signature for bot handlers. The Context is an enriched
 // version of telebot.Context that also carries the resolved User.
@@ -15,6 +18,9 @@ type Context interface {
 	// BotUser returns the resolved User for the message sender.
 	// Returns nil if the sender is not registered.
 	BotUser() *User
+
+	// App returns the main App instance
+	App() *host.App
 
 	// SessionGet returns a value previously stored on the user's session via
 	// SessionSet. The second return value reports whether the key was present.
@@ -40,6 +46,10 @@ type botCtx struct {
 }
 
 func (c *botCtx) BotUser() *User { return c.user }
+
+func (c *botCtx) App() *host.App {
+	return c.bot.app
+}
 
 func (c *botCtx) SessionGet(key string) (any, bool) {
 	if c.user == nil || c.user.Session == nil || c.user.Session.Data == nil {
