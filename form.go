@@ -100,6 +100,16 @@ type QuestionSource interface {
 type FormContext struct {
 	Ctx     Context
 	Answers Answers
+	// Index is the zero-based position of the question being requested. It is 0
+	// on the first call, increments by one for each answered question, and
+	// decreases when the user navigates Back — so it always reflects where in
+	// the asked sequence the next question sits.
+	Index int
+	// Last is the question that was just answered, or nil on the first call.
+	// Note that Back re-asks a previous question without consulting the source,
+	// so Last only reports the most recent forward answer; the cleared answer is
+	// already absent from Answers by the time the source is next called.
+	Last *Question
 }
 
 // sourceFunc adapts a plain function to a QuestionSource.
@@ -153,6 +163,7 @@ type formState struct {
 	answers  Answers     // answers collected so far
 	history  []*Question // BackAllow questions answered so far, for back-navigation
 	selected []string    // in-progress MultiChoice selections for pending
+	index    int         // zero-based position of pending in the asked sequence
 }
 
 // resolveBack collapses BackInherit to a concrete allow/deny for a question.
@@ -227,6 +238,7 @@ func (fs *formState) handle(c Context, b *Bot) (inputState, error) {
 		delete(fs.answers, prev.Key)
 		fs.pending = prev
 		fs.selected = nil
+		fs.index--
 		b.saveSession(u)
 		return fs, b.askQuestion(c, fs)
 	}
@@ -287,7 +299,8 @@ func (fs *formState) advance(c Context, b *Bot, answered *Question) (inputState,
 		fs.history = nil // checkpoint barrier — nothing before this is reachable
 	}
 
-	next, err := fs.form.Source.Next(FormContext{Ctx: c, Answers: fs.answers})
+	fs.index++
+	next, err := fs.form.Source.Next(FormContext{Ctx: c, Answers: fs.answers, Index: fs.index, Last: answered})
 	if err != nil {
 		b.errorHandler(err, c)
 		u.Session.input = nil
