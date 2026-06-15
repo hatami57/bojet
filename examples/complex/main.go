@@ -11,14 +11,14 @@ import (
 	"gopkg.in/telebot.v4"
 
 	"github.com/hatami57/bojet"
-	"github.com/hatami57/microjet/core"
+	"github.com/hatami57/microjet/core/logx"
 	"github.com/hatami57/microjet/gormx/sqlite"
 	"github.com/hatami57/microjet/host"
 )
 
 func main() {
 	// Structured logger from microjet/core, used by the hooks and error handler.
-	logger := core.NewLogger(&core.LogConfig{Level: "info", Format: "text"}, false)
+	logger := logx.NewLogger(&logx.LogConfig{Level: "info", Format: "text"}, false)
 
 	// --- Page tree ---
 	supportPage := bojet.NewPage(

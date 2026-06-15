@@ -3,12 +3,12 @@ module github.com/hatami57/bojet
 go 1.26.2
 
 require (
-	github.com/hatami57/microjet/core v0.15.0
-	github.com/hatami57/microjet/gormx v0.15.0
-	github.com/hatami57/microjet/gormx/sqlite v0.15.0
-	github.com/hatami57/microjet/host v0.15.0
+	github.com/hatami57/microjet/core v0.17.0
+	github.com/hatami57/microjet/gormx v0.17.0
+	github.com/hatami57/microjet/gormx/sqlite v0.17.0
+	github.com/hatami57/microjet/host v0.17.0
 	github.com/robfig/cron/v3 v3.0.1
-	gopkg.in/telebot.v4 v4.0.0-beta.5
+	gopkg.in/telebot.v4 v4.0.0-beta.9
 	gorm.io/gorm v1.31.1
 )
 
@@ -67,15 +67,12 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/hatami57/microjet/aws v0.15.0 // indirect
-	github.com/hatami57/microjet/cache v0.15.0 // indirect
-	github.com/hatami57/microjet/httpx v0.15.0 // indirect
-	github.com/hatami57/microjet/jsonx v0.15.0 // indirect
-	github.com/hatami57/microjet/messaging v0.15.0 // indirect
-	github.com/hatami57/microjet/otelx v0.15.0 // indirect
-	github.com/hatami57/microjet/outbox v0.15.0 // indirect
-	github.com/hatami57/microjet/tenant v0.15.0 // indirect
-	github.com/hatami57/microjet/types v0.15.0 // indirect
+	github.com/hatami57/microjet/aws v0.17.0 // indirect
+	github.com/hatami57/microjet/cache v0.17.0 // indirect
+	github.com/hatami57/microjet/httpx v0.17.0 // indirect
+	github.com/hatami57/microjet/messaging v0.17.0 // indirect
+	github.com/hatami57/microjet/otelx v0.17.0 // indirect
+	github.com/hatami57/microjet/outbox v0.17.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -141,12 +138,6 @@ require (
 
 replace github.com/hatami57/microjet/core => ../microjet/core
 
-replace github.com/hatami57/microjet/utils => ../microjet/utils
-
 replace github.com/hatami57/microjet/gormx => ../microjet/gormx
 
 replace github.com/hatami57/microjet/host => ../microjet/host
-
-replace github.com/hatami57/microjet/types => ../microjet/types
-
-replace github.com/hatami57/microjet/jsonx => ../microjet/jsonx

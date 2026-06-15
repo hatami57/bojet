@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/hatami57/microjet/core"
+	"github.com/hatami57/microjet/core/configx"
+	"github.com/hatami57/microjet/core/errorx"
 	"github.com/hatami57/microjet/host"
 	"github.com/robfig/cron/v3"
 	"gopkg.in/telebot.v4"
@@ -67,7 +69,7 @@ func New(opts ...Option) *Bot {
 	}
 }
 
-func (b *Bot) ReadConfig(reader core.ConfigReader) error {
+func (b *Bot) ReadConfig(reader configx.Reader) error {
 	reader.SetDefault("bot.pollTimeout", "10s")
 	reader.SetDefault("bot.cacheExpiry", "30m")
 	reader.SetDefault("bot.contactAdmin", true)
@@ -88,7 +90,7 @@ func (b *Bot) Init(app *host.App) error {
 
 	tb, err := telebot.NewBot(*settings)
 	if err != nil {
-		return core.NewInternalError("Telegram", "failed to initialize Telegram bot").WithInner(err)
+		return errorx.NewInternalError("Telegram", "failed to initialize Telegram bot").WithInner(err)
 	}
 
 	b.app = app
@@ -112,7 +114,7 @@ func (b *Bot) createSettings() (*telebot.Settings, error) {
 	if b.config.ProxyURL != "" {
 		url, err := url.Parse(b.config.ProxyURL)
 		if err != nil {
-			return nil, core.NewBadRequestError("Proxy", "invalid proxy URL").
+			return nil, errorx.NewBadRequestError("Proxy", "invalid proxy URL").
 				WithParams("url", b.config.ProxyURL).
 				WithInner(err)
 		}
