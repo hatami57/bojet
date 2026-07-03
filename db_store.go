@@ -70,15 +70,16 @@ func NewDBStore() UserStore {
 }
 
 func (d *dbStore) Init(app *host.App) error {
-	base := gormx.NewBaseRepository(app.DB())
+	db := gormx.Of(app)
+	base := gormx.NewBaseRepository(db)
 	d.BaseRepository = base
-	d.db = app.DB()
+	d.db = db
 	d.users = gormx.NewTableFor[userRecord](&base)
 	return nil
 }
 
 func (d *dbStore) Setup(app *host.App) error {
-	return app.DB().AutoMigrate(&userRecord{})
+	return gormx.Of(app).AutoMigrate(&userRecord{})
 }
 
 // Close do nothing here because the database is external and managed elsewhere.
@@ -88,7 +89,7 @@ func (d *dbStore) Close() error {
 
 // GetUser returns the user with the given Telegram ID, or nil if not found.
 func (d *dbStore) GetUser(id int64) (*User, error) {
-	rec, err := d.users.Find(context.Background(), id)
+	rec, err := d.users.First(context.Background(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +112,9 @@ func (d *dbStore) SaveUser(u *User) error {
 
 // SetConfirmed updates the is_confirmed flag for the given user.
 func (d *dbStore) SetConfirmed(id int64, confirmed bool) error {
-	return d.users.UpdateMap(context.Background(),
+	_, err := d.users.UpdateMap(context.Background(),
 		map[string]any{"is_confirmed": confirmed}, "tg_id = ?", id)
+	return err
 }
 
 // ListConfirmedIDs returns the Telegram IDs of all confirmed users.
