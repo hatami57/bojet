@@ -10,7 +10,7 @@ branching.
 
 ```bash
 go get github.com/hatami57/bojet
-go get github.com/hatami57/microjet/host github.com/hatami57/microjet/gormx/sqlite
+go get github.com/hatami57/microjet/host github.com/hatami57/microjet/gormx github.com/hatami57/microjet/gormx/sqlite
 ```
 
 ## Quick start
@@ -24,6 +24,7 @@ package main
 
 import (
 	"github.com/hatami57/bojet"
+	"github.com/hatami57/microjet/gormx"
 	"github.com/hatami57/microjet/gormx/sqlite"
 	"github.com/hatami57/microjet/host"
 )
@@ -36,7 +37,7 @@ func main() {
 	)
 
 	host.MustNew().
-		WithDatabase(sqlite.Driver()).
+		WithModule(gormx.Module(sqlite.Driver())).
 		WithModule(bojet.Module(
 			bojet.WithAdmins(123456789),
 			bojet.WithHomePage(home),
@@ -57,9 +58,34 @@ token = "YOUR_BOT_TOKEN" # or set APP_BOT_TOKEN
 name = "./bot.db"
 ```
 
+The token is required: the bot validates its config at boot, so a missing
+`[bot] token` fails startup with a named error instead of a 401 from Telegram on
+the first API call. To supply it from code — an embedded app, or a test — set it
+through the config layer rather than an option:
+
+```go
+host.MustNew(host.WithConfigValue("bot.token", token))
+```
+
 The bot stores its users in the app's database via the default SQLite
 `UserStore`, which `Module` registers for you. To use a different backend,
-register your own `UserStore` service with the app.
+provide your own `UserStore` service *after* the bojet module — the container is
+keyed by `(type, name)`, so the later registration replaces the default:
+
+```go
+host.MustNew().
+	WithModule(gormx.Module(sqlite.Driver())).
+	WithModule(bojet.Module(bojet.WithHomePage(home))).
+	WithProvider(func(app *host.App) error {
+		host.ProvideService[bojet.UserStore](app, myStore)
+		return nil
+	}).
+	MustRun()
+```
+
+A custom store's `SetConfirmed` should return an error matching
+`bojet.ErrUserNotFound` when no user has that ID, so approving a user who has
+since been deleted reports it instead of succeeding silently.
 
 By default new users register by sharing their phone number and must be approved
 by an admin before they can use the bot. See [Access mode](#access-mode) to make

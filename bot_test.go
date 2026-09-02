@@ -156,3 +156,29 @@ func TestProvisionCreatesConfirmedUser(t *testing.T) {
 		t.Fatal("provisioned user was not cached")
 	}
 }
+
+func TestValidateRejectsBadConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		wantErr bool
+	}{
+		{"missing token", Config{}, true},
+		{"blank token", Config{Token: "   "}, true},
+		{"negative poll timeout", Config{Token: "t", PollTimeout: -time.Second}, true},
+		{"negative cache expiry", Config{Token: "t", CacheExpiry: -time.Second}, true},
+		{"valid", Config{Token: "t", PollTimeout: 10 * time.Second, CacheExpiry: 30 * time.Minute}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (&Bot{config: tc.config}).Validate()
+			if tc.wantErr && err == nil {
+				t.Fatal("Validate returned nil; want an error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+		})
+	}
+}

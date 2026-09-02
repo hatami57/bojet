@@ -10,7 +10,10 @@ type UserStore interface {
 	// SaveUser inserts or updates the user record.
 	SaveUser(user *User) error
 
-	// SetConfirmed updates the is_confirmed flag for the given user.
+	// SetConfirmed updates the is_confirmed flag for the given user. It returns
+	// an error matching ErrUserNotFound when no user has that ID, so an admin
+	// approving a user who has since been deleted is told so rather than
+	// getting a silent success.
 	SetConfirmed(id int64, confirmed bool) error
 
 	// ListConfirmedIDs returns the Telegram IDs of all confirmed users.
