@@ -10,7 +10,7 @@ branching.
 
 ```bash
 go get github.com/hatami57/bojet
-go get github.com/hatami57/microjet/host github.com/hatami57/microjet/gormx/sqlite
+go get github.com/hatami57/microjet/host github.com/hatami57/microjet/gormx github.com/hatami57/microjet/gormx/sqlite
 ```
 
 ## Quick start
@@ -24,6 +24,7 @@ package main
 
 import (
 	"github.com/hatami57/bojet"
+	"github.com/hatami57/microjet/gormx"
 	"github.com/hatami57/microjet/gormx/sqlite"
 	"github.com/hatami57/microjet/host"
 )
@@ -36,7 +37,7 @@ func main() {
 	)
 
 	host.MustNew().
-		WithDatabase(sqlite.Driver()).
+		WithModule(gormx.Module(sqlite.Driver())).
 		WithModule(bojet.Module(
 			bojet.WithAdmins(123456789),
 			bojet.WithHomePage(home),

@@ -3,10 +3,10 @@ module github.com/hatami57/bojet
 go 1.26.2
 
 require (
-	github.com/hatami57/microjet/core v0.24.0
-	github.com/hatami57/microjet/gormx v0.24.0
-	github.com/hatami57/microjet/gormx/sqlite v0.24.0
-	github.com/hatami57/microjet/host v0.24.0
+	github.com/hatami57/microjet/core v0.41.0
+	github.com/hatami57/microjet/gormx v0.41.0
+	github.com/hatami57/microjet/gormx/sqlite v0.41.0
+	github.com/hatami57/microjet/host v0.41.0
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/telebot.v4 v4.0.0-beta.9
 	gorm.io/gorm v1.31.1

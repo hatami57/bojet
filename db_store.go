@@ -62,7 +62,7 @@ type dbStore struct {
 }
 
 // NewDBStore returns the default UserStore. It is a service: the host injects
-// the shared *gorm.DB (app.DB()) during Init and migrates the users schema in
+// the shared *gorm.DB (gormx.Of(app)) during Init and migrates the users schema in
 // Setup, so the bot stores its users in the same database as the rest of the
 // application. Module registers it automatically.
 func NewDBStore() UserStore {

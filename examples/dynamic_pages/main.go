@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hatami57/bojet"
+	"github.com/hatami57/microjet/gormx"
 	"github.com/hatami57/microjet/gormx/sqlite"
 	"github.com/hatami57/microjet/host"
 )
@@ -118,7 +119,7 @@ func main() {
 	)
 
 	host.MustNew().
-		WithDatabase(sqlite.Driver()).
+		WithModule(gormx.Module(sqlite.Driver())).
 		WithModule(bojet.Module(
 			bojet.WithPublicAccess(),
 			bojet.WithHomePage(homePage),
