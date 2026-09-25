@@ -22,9 +22,11 @@ type Config struct {
 	ContactAdmin bool          `mapstructure:"contactAdmin"`
 }
 
-// WithConfig applies all configurable Config fields as bot options. The host
-// normally populates Config from the [bot] section automatically (see
-// Bot.ReadConfig); use this only to inject a Config you built yourself.
+// WithConfig applies a Config you built yourself on top of the one the host
+// read from the [bot] section (see Bot.ReadConfig). Empty strings and zero
+// durations keep the configured value and AdminIDs are added to the configured
+// admins. ContactAdmin is a plain bool with no "unset" state, so it is always
+// applied: set it explicitly, or the feature is turned off.
 func WithConfig(cfg *Config) Option {
 	return func(b *Bot) {
 		if cfg == nil {
@@ -32,6 +34,9 @@ func WithConfig(cfg *Config) Option {
 		}
 		for _, id := range cfg.AdminIDs {
 			b.adminIDs[id] = struct{}{}
+		}
+		if cfg.Token != "" {
+			b.config.Token = cfg.Token
 		}
 		if cfg.ProxyURL != "" {
 			b.config.ProxyURL = cfg.ProxyURL

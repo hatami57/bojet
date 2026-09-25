@@ -35,7 +35,8 @@ type Context interface {
 	SessionData() map[string]any
 
 	// StartForm begins the given questionnaire for the current user, asking
-	// its first question. Any active form is replaced.
+	// its first question. Any active form is replaced. It returns
+	// ErrUserNotFound when the sender is not a registered user.
 	StartForm(f *Form) error
 }
 

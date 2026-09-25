@@ -69,7 +69,7 @@ func (p *Page) processText(text string, c Context, b *Bot) (bool, error) {
 	return false, nil
 }
 
-// keyboard builds the reply keyboard for this page.
+// userKeyboard builds the reply keyboard for the user's current page.
 func (b *Bot) userKeyboard(u *User) *telebot.ReplyMarkup {
 	if u == nil || u.Session == nil {
 		return nil
@@ -88,7 +88,7 @@ func (b *Bot) userKeyboard(u *User) *telebot.ReplyMarkup {
 		}
 	}
 
-	if b.config.ContactAdmin {
+	if b.contactAdminEnabled(u) {
 		rows = append(rows, rm.Row(rm.Text(b.messages.ContactAdminButton)))
 	}
 

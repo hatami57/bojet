@@ -1,8 +1,8 @@
 // Package bojet provides a SQLite-backed UserStore for bojet, built on
 // microjet's database stack: the same pure-Go glebarez/sqlite driver and the
 // generic gormx.Table helpers. Because it shares microjet's driver, a host
-// application can hand its own *gorm.DB to NewWithDB and the bot will store its
-// users in that same database/connection — no second driver, no second handle.
+// application's gormx database is reused and the bot stores its users in that
+// same database/connection — no second driver, no second handle.
 package bojet
 
 import (
@@ -25,6 +25,7 @@ type userRecord struct {
 	Username    string `gorm:"not null;default:''"`
 	PhoneNumber string `gorm:"not null;default:''"`
 	IsConfirmed bool   `gorm:"not null;default:false"`
+	IsRejected  bool   `gorm:"not null;default:false"`
 	CreatedAt   time.Time
 }
 
@@ -39,6 +40,7 @@ func toRecord(u *User) *userRecord {
 		Username:    u.Username,
 		PhoneNumber: u.PhoneNumber,
 		IsConfirmed: u.IsConfirmed,
+		IsRejected:  u.IsRejected,
 	}
 }
 
@@ -50,6 +52,7 @@ func (r *userRecord) toUser() *User {
 		Username:    r.Username,
 		PhoneNumber: r.PhoneNumber,
 		IsConfirmed: r.IsConfirmed,
+		IsRejected:  r.IsRejected,
 	}
 }
 
@@ -61,25 +64,25 @@ type dbStore struct {
 	users *gormx.Table[userRecord]
 }
 
-// NewDBStore returns the default UserStore. It is a service: the host injects
-// the shared *gorm.DB (gormx.Of(app)) during Init and migrates the users schema in
-// Setup, so the bot stores its users in the same database as the rest of the
+// NewDBStore returns the default UserStore. It is a service: in Setup the host
+// hands it the shared *gorm.DB (gormx.Of(app)) and it migrates the users
+// schema, so the bot stores its users in the same database as the rest of the
 // application. Module registers it automatically.
 func NewDBStore() UserStore {
 	return &dbStore{}
 }
 
-func (d *dbStore) Init(app *host.App) error {
+// Setup binds the store to the database and migrates the users schema. It runs
+// in Setup rather than Init because the database is opened in gormx's Init, and
+// Setup runs only after every service is initialized — so the store works
+// whether bojet.Module is registered before or after gormx.Module.
+func (d *dbStore) Setup(app *host.App) error {
 	db := gormx.Of(app)
 	base := gormx.NewBaseRepository(db)
 	d.BaseRepository = base
 	d.db = db
 	d.users = gormx.NewTableFor[userRecord](&base)
-	return nil
-}
-
-func (d *dbStore) Setup(app *host.App) error {
-	return gormx.Of(app).AutoMigrate(&userRecord{})
+	return db.AutoMigrate(&userRecord{})
 }
 
 // Close do nothing here because the database is external and managed elsewhere.
@@ -110,10 +113,10 @@ func (d *dbStore) SaveUser(u *User) error {
 		Create(toRecord(u)).Error
 }
 
-// SetConfirmed updates the is_confirmed flag for the given user.
+// SetConfirmed approves (true) or rejects (false) the given user.
 func (d *dbStore) SetConfirmed(id int64, confirmed bool) error {
 	_, err := d.users.UpdateMap(context.Background(),
-		map[string]any{"is_confirmed": confirmed}, "tg_id = ?", id)
+		map[string]any{"is_confirmed": confirmed, "is_rejected": !confirmed}, "tg_id = ?", id)
 	return err
 }
 

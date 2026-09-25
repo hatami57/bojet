@@ -16,25 +16,54 @@ func (b *Bot) setupHandlers() {
 	b.tb.Handle(telebot.OnVideo, b.messageHandler)
 }
 
-// handleStart greets a /start. On a public bot (a flow implementing
-// UserProvisioner) it provisions the sender and shows the home menu; otherwise
-// it shows the registration welcome (e.g. the share-phone prompt).
+// handleStart greets a /start. Known users are answered according to their
+// registration state (approved users land on the home menu); on a public bot
+// (a flow implementing UserProvisioner) unknown senders are provisioned first.
+// Anyone else gets the registration welcome (e.g. the share-phone prompt).
 func (b *Bot) handleStart(c telebot.Context) error {
-	if prov, ok := b.registration.(UserProvisioner); ok {
-		user, err := b.provision(prov, c.Sender())
-		if err != nil {
-			b.errorHandler(err, c)
-			return c.Send(b.messages.GenericError)
-		}
-		if user != nil {
-			title := b.messages.Welcome
-			if b.homePage != nil {
-				title = b.homePage.Title
-			}
-			return c.Send(title, b.userKeyboard(user))
-		}
+	sender := c.Sender()
+	if sender == nil {
+		return nil
 	}
-	return c.Send(b.messages.Welcome, b.publicKeyboard)
+	user, err := b.userFor(sender)
+	if err != nil {
+		b.errorHandler(err, c)
+		return c.Send(b.messages.GenericError)
+	}
+	if user == nil {
+		return c.Send(b.messages.Welcome, b.publicKeyboard)
+	}
+	return b.greetRegistered(c, user)
+}
+
+// greetRegistered answers a known user: approved users (and admins) are taken
+// back to the home menu, others are told where their registration stands.
+func (b *Bot) greetRegistered(c telebot.Context, user *User) error {
+	switch {
+	case user.IsConfirmed || b.IsAdmin(user.ID):
+		return b.showHome(c, user)
+	case user.IsRejected:
+		return c.Send(b.messages.Rejected)
+	default:
+		return c.Send(b.messages.RegistrationPending)
+	}
+}
+
+// showHome restarts the user's conversation on the home page, abandoning any
+// active form or prompt.
+func (b *Bot) showHome(c telebot.Context, user *User) error {
+	if user.Session.input != nil {
+		user.Session.input = nil
+		b.deleteSession(user.ID)
+	}
+	user.Session.CurrentPage = b.homePage
+	user.Session.PageHistory = nil
+
+	title := b.messages.Welcome
+	if b.homePage != nil {
+		title = b.homePage.Title
+	}
+	return c.Send(title, b.userKeyboard(user))
 }
 
 // provision returns the existing user for the sender, or creates, persists and
@@ -62,40 +91,30 @@ func (b *Bot) provision(prov UserProvisioner, sender *telebot.User) (*User, erro
 	return user, nil
 }
 
+// messageHandler routes an admin's reply to a forwarded user message back to
+// that user; every other message is handled as menu/conversation input, for
+// admins and users alike.
 func (b *Bot) messageHandler(c telebot.Context) error {
-	if b.IsAdmin(c.Sender().ID) {
-		return b.handleAdminMessage(c)
+	sender := c.Sender()
+	if sender == nil {
+		return nil
+	}
+	if b.IsAdmin(sender.ID) {
+		if target := b.replyTarget(c.Message()); target != nil {
+			return b.handleReplyToUser(c, target)
+		}
 	}
 	return b.handleUserMessage(c)
 }
 
-func (b *Bot) handleAdminMessage(c telebot.Context) error {
-	msg := c.Message()
-	if msg != nil && msg.ReplyTo != nil && msg.ReplyTo.OriginalSender != nil {
-		return b.handleReplyToUser(c)
-	}
-	return c.Send(b.messages.UnknownCommand)
-}
-
 func (b *Bot) handleUserMessage(c telebot.Context) error {
-	user, err := b.resolveUser(c.Sender().ID)
+	user, err := b.userFor(c.Sender())
 	if err != nil {
 		b.errorHandler(err, c)
 		return c.Send(b.messages.GenericError)
 	}
 	if user == nil {
-		// Public bots provision unknown senders on first contact instead of
-		// rejecting them.
-		if prov, ok := b.registration.(UserProvisioner); ok {
-			user, err = b.provision(prov, c.Sender())
-			if err != nil {
-				b.errorHandler(err, c)
-				return c.Send(b.messages.GenericError)
-			}
-		}
-		if user == nil {
-			return c.Send(b.messages.NotAuthorized, b.publicKeyboard)
-		}
+		return c.Send(b.messages.NotAuthorized, b.publicKeyboard)
 	}
 
 	bc := &botCtx{Context: c, bot: b, user: user}
@@ -113,7 +132,7 @@ func (b *Bot) handleUserMessage(c telebot.Context) error {
 	}
 
 	// Enter the contact-admin flow.
-	if b.config.ContactAdmin && c.Text() == b.messages.ContactAdminButton {
+	if b.contactAdminEnabled(user) && c.Text() == b.messages.ContactAdminButton {
 		user.Session.input = contactAdmin{}
 		return c.Send(b.messages.ContactAdminPrompt, b.cancelKeyboard())
 	}
@@ -139,10 +158,35 @@ func (b *Bot) handleUserMessage(c telebot.Context) error {
 	return c.Send(b.messages.UnknownCommand, b.userKeyboard(user))
 }
 
-func (b *Bot) handleReplyToUser(c telebot.Context) error {
-	original := c.Message().ReplyTo.OriginalSender
-	if _, err := b.tb.Forward(original, c.Message()); err != nil {
-		b.app.Logger.Error("forward reply to user failed", "user_id", original.ID, "error", err)
+// contactAdminEnabled reports whether u gets the contact-admin feature: it must
+// be enabled, there must be an admin to reach, and u must not be one.
+func (b *Bot) contactAdminEnabled(u *User) bool {
+	return b.config.ContactAdmin && len(b.adminIDs) > 0 && (u == nil || !b.IsAdmin(u.ID))
+}
+
+// replyTarget returns the user an admin's message replies to: the sender of a
+// contact-admin message the bot forwarded, or the original sender of any other
+// forwarded message Telegram still attributes. Returns nil when msg is not a
+// reply to such a message.
+func (b *Bot) replyTarget(msg *telebot.Message) *telebot.User {
+	if msg == nil || msg.ReplyTo == nil {
+		return nil
+	}
+	orig := msg.ReplyTo
+	if orig.Chat != nil {
+		if id, ok := b.relays.lookup(orig.Chat.ID, orig.ID); ok {
+			return &telebot.User{ID: id}
+		}
+	}
+	if orig.Origin != nil && orig.Origin.Sender != nil {
+		return orig.Origin.Sender
+	}
+	return orig.OriginalSender
+}
+
+func (b *Bot) handleReplyToUser(c telebot.Context, target *telebot.User) error {
+	if _, err := b.tb.Forward(target, c.Message()); err != nil {
+		b.logger().Error("forward reply to user failed", "user_id", target.ID, "error", err)
 		return c.Send(b.messages.ReplyFailed)
 	}
 	return c.Send(b.messages.ReplyDelivered)
@@ -151,21 +195,28 @@ func (b *Bot) handleReplyToUser(c telebot.Context) error {
 // handleContact is called by PhoneVerificationFlow when a user shares their phone.
 func (b *Bot) handleContact(c telebot.Context) error {
 	contact := c.Message().Contact
+	sender := c.Sender()
 
-	existing, err := b.resolveUser(contact.UserID)
+	// Only the sender's own contact registers them; any other contact card
+	// would register someone else's Telegram ID (or ID 0 for non-users).
+	if sender == nil || contact.UserID != sender.ID {
+		return c.Send(b.messages.ShareOwnContact, b.publicKeyboard)
+	}
+
+	existing, err := b.userFor(sender)
 	if err != nil {
 		b.errorHandler(err, c)
 		return c.Send(b.messages.GenericError)
 	}
 	if existing != nil {
-		return c.Send(b.messages.RegistrationPending)
+		return b.greetRegistered(c, existing)
 	}
 
 	user := &User{
 		ID:          contact.UserID,
 		FirstName:   contact.FirstName,
 		LastName:    contact.LastName,
-		Username:    c.Sender().Username,
+		Username:    sender.Username,
 		PhoneNumber: contact.PhoneNumber,
 		IsConfirmed: false,
 		Session:     newSession(b.homePage),
@@ -212,19 +263,25 @@ func (b *Bot) handleApprove(c telebot.Context) error {
 		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
 	}
 
-	// update cache if present
-	b.mu.Lock()
-	if u, ok := b.users[userID]; ok {
+	// Update the cached user, if any, so the approval takes effect at once.
+	b.updateCachedUser(userID, func(u *User) {
 		u.IsConfirmed = true
-	}
-	b.mu.Unlock()
+		u.IsRejected = false
+	})
 
-	user, _ := b.resolveUser(userID)
+	user, err := b.resolveUser(userID)
+	if err != nil {
+		b.errorHandler(err, c)
+	}
 	if user != nil {
 		b.fireHooks(b.hooks.onUserApproved, user)
 	}
 
-	if _, err := b.tb.Send(&telebot.User{ID: userID}, b.messages.Approved); err != nil {
+	// The user still has the share-phone keyboard; hand them the home menu. It
+	// is built from a fresh session so this admin goroutine never touches the
+	// user's live one.
+	home := b.userKeyboard(&User{ID: userID, Session: newSession(b.homePage)})
+	if _, err := b.tb.Send(&telebot.User{ID: userID}, b.messages.Approved, home); err != nil {
 		b.errorHandler(err, c)
 	}
 
@@ -247,12 +304,21 @@ func (b *Bot) handleReject(c telebot.Context) error {
 		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
 	}
 
-	// evict from cache so next load reflects new state
+	// Evict from cache so the next load reflects the rejection.
 	b.mu.Lock()
-	user := b.users[userID]
+	cached := b.users[userID]
 	delete(b.users, userID)
 	b.mu.Unlock()
 
+	// Load the user for the hooks even if they were not cached (e.g. after a
+	// restart between registration and rejection).
+	user, err := b.userStore.GetUser(userID)
+	if err != nil {
+		b.errorHandler(err, c)
+	}
+	if user == nil {
+		user = cached
+	}
 	if user != nil {
 		b.fireHooks(b.hooks.onUserRejected, user)
 	}

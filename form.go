@@ -197,6 +197,10 @@ func (b *Bot) startForm(c Context, u *User, f *Form) error {
 	if f == nil || f.Source == nil {
 		return nil
 	}
+	if u == nil || u.Session == nil {
+		// Only a registered user has a session to hold the form's progress.
+		return ErrUserNotFound
+	}
 	fs := &formState{form: f, answers: Answers{}}
 	first, err := f.Source.Next(FormContext{Ctx: c, Answers: fs.answers})
 	if err != nil {
@@ -231,8 +235,12 @@ func (fs *formState) handle(c Context, b *Bot) (inputState, error) {
 		return nil, c.Send(b.messages.FormCancelled, b.userKeyboard(u))
 	}
 
-	// Back to the previous answered question.
-	if text == PageBackText && len(fs.history) > 0 {
+	// Back to the previous answered question. With nothing to go back to, the
+	// button text is not an answer: re-ask the question.
+	if text == PageBackText && len(fs.history) == 0 {
+		return fs, b.askQuestion(c, fs)
+	}
+	if text == PageBackText {
 		prev := fs.history[len(fs.history)-1]
 		fs.history = fs.history[:len(fs.history)-1]
 		delete(fs.answers, prev.Key)

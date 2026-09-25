@@ -319,6 +319,13 @@ Everything is configured through `Module` options:
 - `WithSchedule(cronExpr, fn)` / `WithScheduledBroadcast(cronExpr, msg)` — recurring jobs.
 - Lifecycle hooks: `WithOnUserRegistered`, `WithOnUserApproved`, `WithOnUserRejected`.
 - `WithProxy`, `WithPollTimeout`, `WithCacheExpiry`, `WithErrorHandler`, `WithMessages`.
+- Admins use the menus like any other user. An admin who replies to a message a
+  user sent through **Contact Admin** has the reply delivered to that user.
+- `Broadcast` delivers in the background, paced to Telegram's rate limits and
+  retried when Telegram asks the bot to slow down.
+- Updates from one user are handled one at a time. A panicking handler is
+  reported to the error handler instead of crashing the bot; without
+  `WithErrorHandler`, errors are logged through the host's logger.
 
 Settings in the `[bot]` config section (`token`, `proxyUrl`, `pollTimeout`,
 `cacheExpiry`, `adminIds`, `contactAdmin`) are read automatically; matching

@@ -8,6 +8,7 @@ type Messages struct {
 	ContactAdminButton  string
 	NotAuthorized       string
 	RegistrationPending string
+	ShareOwnContact     string
 	Approved            string
 	Rejected            string
 	ContactAdminPrompt  string
@@ -35,6 +36,7 @@ var DefaultMessages = Messages{
 	ContactAdminButton:  "📞 Contact Admin",
 	NotAuthorized:       "⛔ You are not authorized. Please wait for admin approval.",
 	RegistrationPending: "✅ Your request has been submitted. Please wait for admin approval.",
+	ShareOwnContact:     "⚠️ Please share your own phone number using the button below.",
 	Approved:            "🎉 Your request has been approved! You can now use the bot.",
 	Rejected:            "🚫 Sorry, your request was rejected.",
 	ContactAdminPrompt:  "✍️ Please type or record your message for the admin.",

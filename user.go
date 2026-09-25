@@ -12,6 +12,8 @@ type User struct {
 	Username    string
 	PhoneNumber string
 	IsConfirmed bool
+	// IsRejected is set when an admin rejects the user's registration.
+	IsRejected bool
 
 	// Session holds ephemeral runtime state (current page, form progress,
 	// scratch data). It is not persisted by UserStore and is always non-nil

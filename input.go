@@ -24,11 +24,26 @@ func (contactAdmin) handle(c Context, b *Bot) (inputState, error) {
 		return nil, c.Send(b.messages.ContactAdminCancelled, b.userKeyboard(u))
 	}
 
+	// The message counts as sent once any admin has it: staying active after a
+	// partial failure would make the user resend it to admins who already got it.
+	delivered := false
 	for adminID := range b.adminIDs {
-		if _, err := b.tb.Forward(&telebot.User{ID: adminID}, c.Message()); err != nil {
-			// Stay active so the user can retry.
-			return contactAdmin{}, c.Send(b.messages.MessageSendFailed, b.cancelKeyboard())
+		fwd, err := b.tb.Forward(&telebot.User{ID: adminID}, c.Message())
+		if err != nil {
+			b.errorHandler(err, c)
+			continue
 		}
+		delivered = true
+		if fwd != nil && fwd.Chat != nil {
+			b.relays.add(fwd.Chat.ID, fwd.ID, u.ID)
+		}
+	}
+	if !delivered {
+		// Stay active so the user can retry — unless there is nobody to reach.
+		if len(b.adminIDs) == 0 {
+			return nil, c.Send(b.messages.MessageSendFailed, b.userKeyboard(u))
+		}
+		return contactAdmin{}, c.Send(b.messages.MessageSendFailed, b.cancelKeyboard())
 	}
 	return nil, c.Send(b.messages.MessageSent, b.userKeyboard(u))
 }

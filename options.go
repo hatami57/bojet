@@ -85,6 +85,9 @@ func WithMessages(m Messages) Option {
 		if m.RegistrationPending != "" {
 			b.messages.RegistrationPending = m.RegistrationPending
 		}
+		if m.ShareOwnContact != "" {
+			b.messages.ShareOwnContact = m.ShareOwnContact
+		}
 		if m.Approved != "" {
 			b.messages.Approved = m.Approved
 		}
