@@ -14,9 +14,12 @@ func Module(opts ...Option) *BojetModule {
 	}
 }
 
+// ModuleName names the module in the host's registration logs and errors.
+func (b *BojetModule) ModuleName() string { return "bojet" }
+
 func (b *BojetModule) Register(app *host.App) error {
+	host.ProvideService[UserStore](app, NewDBStore())
 	host.ProvideService(app, New(b.opts...))
-	host.ProvideService(app, NewDBStore())
 
 	return app.Err()
 }

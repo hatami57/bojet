@@ -50,15 +50,8 @@ require (
 	modernc.org/sqlite v1.49.1 // indirect
 )
 
-replace (
-	github.com/hatami57/microjet/aws => ../microjet/aws
-	github.com/hatami57/microjet/cache => ../microjet/cache
-	github.com/hatami57/microjet/core => ../microjet/core
-	github.com/hatami57/microjet/gormx => ../microjet/gormx
-	github.com/hatami57/microjet/gormx/sqlite => ../microjet/gormx/sqlite
-	github.com/hatami57/microjet/host => ../microjet/host
-	github.com/hatami57/microjet/httpx => ../microjet/httpx
-	github.com/hatami57/microjet/messaging => ../microjet/messaging
-	github.com/hatami57/microjet/otelx => ../microjet/otelx
-	github.com/hatami57/microjet/outbox => ../microjet/outbox
-)
+replace github.com/hatami57/microjet/core => ../microjet/core
+
+replace github.com/hatami57/microjet/gormx => ../microjet/gormx
+
+replace github.com/hatami57/microjet/host => ../microjet/host

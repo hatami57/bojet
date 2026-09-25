@@ -1,6 +1,7 @@
 package bojet
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -260,6 +261,9 @@ func (b *Bot) handleApprove(c telebot.Context) error {
 
 	if err := b.userStore.SetConfirmed(userID, true); err != nil {
 		b.errorHandler(err, c)
+		if errors.Is(err, ErrUserNotFound) {
+			return c.Respond(&telebot.CallbackResponse{Text: "User no longer exists"})
+		}
 		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
 	}
 
@@ -301,6 +305,9 @@ func (b *Bot) handleReject(c telebot.Context) error {
 
 	if err := b.userStore.SetConfirmed(userID, false); err != nil {
 		b.errorHandler(err, c)
+		if errors.Is(err, ErrUserNotFound) {
+			return c.Respond(&telebot.CallbackResponse{Text: "User no longer exists"})
+		}
 		return c.Respond(&telebot.CallbackResponse{Text: "DB error"})
 	}
 

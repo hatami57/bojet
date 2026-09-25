@@ -13,6 +13,9 @@ type UserStore interface {
 	// SetConfirmed records an admin's decision on the user's registration:
 	// true approves them (and clears any rejection), false rejects them, which
 	// also sets IsRejected so the user can be told their request was declined.
+	// It returns an error matching ErrUserNotFound when no user has that ID, so
+	// an admin deciding on a user who has since been deleted is told so rather
+	// than getting a silent success.
 	SetConfirmed(id int64, confirmed bool) error
 
 	// ListConfirmedIDs returns the Telegram IDs of all confirmed users.

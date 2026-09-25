@@ -309,14 +309,6 @@ func TestBroadcastPacedWithRetry(t *testing.T) {
 	}
 }
 
-func TestWithConfigAppliesToken(t *testing.T) {
-	b := New(WithConfig(&Config{Token: "tok"}))
-	b.applyOptions()
-	if b.config.Token != "tok" {
-		t.Fatalf("token = %q; want tok", b.config.Token)
-	}
-}
-
 // Without a custom handler, errors are logged rather than dropped.
 func TestDefaultErrorHandlerLogs(t *testing.T) {
 	var buf bytes.Buffer

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -115,6 +116,27 @@ func (b *Bot) ReadConfig(reader configx.Reader) error {
 	return reader.Read("bot", &b.config)
 }
 
+// Validate implements configx.Validator. The host calls it immediately after
+// ReadConfig, so a misconfigured bot fails the boot with a named error instead
+// of surfacing as a 401 from Telegram on the first API call.
+//
+// Note that the token is checked against the config section alone: no Option
+// sets it (see WithConfig), so by this point the value is final. To supply it
+// from code rather than a file, set it through the config layer with
+// host.WithConfigValue("bot.token", token).
+func (b *Bot) Validate() error {
+	if strings.TrimSpace(b.config.Token) == "" {
+		return ErrTokenRequired
+	}
+	if b.config.PollTimeout < 0 {
+		return ErrInvalidDuration.WithParams("pollTimeout", b.config.PollTimeout.String())
+	}
+	if b.config.CacheExpiry < 0 {
+		return ErrInvalidDuration.WithParams("cacheExpiry", b.config.CacheExpiry.String())
+	}
+	return nil
+}
+
 func (b *Bot) Init(app *host.App) error {
 	b.app = app
 	b.clock = app.Clock
@@ -134,7 +156,14 @@ func (b *Bot) Init(app *host.App) error {
 		return errorx.NewInternalError("Telegram", "failed to initialize Telegram bot").WithInner(err)
 	}
 
-	b.userStore = host.MustResolveService[UserStore](app)
+	// ResolveService rather than MustResolveService: a missing store is reported
+	// as ErrStoreRequired instead of a panic out of the host's init phase.
+	store, ok := host.ResolveService[UserStore](app)
+	if !ok {
+		return ErrStoreRequired
+	}
+
+	b.userStore = store
 	b.tb = tb
 	b.buildPublicKeyboard()
 

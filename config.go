@@ -27,6 +27,10 @@ type Config struct {
 // durations keep the configured value and AdminIDs are added to the configured
 // admins. ContactAdmin is a plain bool with no "unset" state, so it is always
 // applied: set it explicitly, or the feature is turned off.
+//
+// Token is ignored: the token is validated as soon as the config is read,
+// before options apply (see Bot.Validate). Supply it through the config layer
+// instead, e.g. host.WithConfigValue("bot.token", token).
 func WithConfig(cfg *Config) Option {
 	return func(b *Bot) {
 		if cfg == nil {
@@ -34,9 +38,6 @@ func WithConfig(cfg *Config) Option {
 		}
 		for _, id := range cfg.AdminIDs {
 			b.adminIDs[id] = struct{}{}
-		}
-		if cfg.Token != "" {
-			b.config.Token = cfg.Token
 		}
 		if cfg.ProxyURL != "" {
 			b.config.ProxyURL = cfg.ProxyURL

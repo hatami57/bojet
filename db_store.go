@@ -64,18 +64,29 @@ type dbStore struct {
 	users *gormx.Table[userRecord]
 }
 
-// NewDBStore returns the default UserStore. It is a service: in Setup the host
-// hands it the shared *gorm.DB (gormx.Of(app)) and it migrates the users
-// schema, so the bot stores its users in the same database as the rest of the
-// application. Module registers it automatically.
+// NewDBStore returns the default UserStore. It is a service: it checks for the
+// app's database during Init, then binds to the shared *gorm.DB and migrates
+// the users schema in Setup, so the bot stores its users in the same database
+// as the rest of the application. Module registers it automatically; install a
+// database alongside it with gormx.Module(sqlite.Driver()).
 func NewDBStore() UserStore {
 	return &dbStore{}
 }
 
-// Setup binds the store to the database and migrates the users schema. It runs
-// in Setup rather than Init because the database is opened in gormx's Init, and
-// Setup runs only after every service is initialized — so the store works
-// whether bojet.Module is registered before or after gormx.Module.
+func (d *dbStore) Init(app *host.App) error {
+	// Lookup rather than gormx.Of: a missing database is a wiring mistake worth
+	// a named error, not the panic Of raises.
+	if _, ok := gormx.Lookup(app); !ok {
+		return ErrDatabaseRequired
+	}
+	return nil
+}
+
+// Setup binds the store to the database and migrates the users schema. The
+// binding happens here rather than in Init because gormx opens the connection
+// in its own Init, which may run after this one, while Setup runs only once
+// every service is initialized — so the store works whether bojet.Module is
+// registered before or after gormx.Module.
 func (d *dbStore) Setup(app *host.App) error {
 	db := gormx.Of(app)
 	base := gormx.NewBaseRepository(db)
@@ -113,11 +124,20 @@ func (d *dbStore) SaveUser(u *User) error {
 		Create(toRecord(u)).Error
 }
 
-// SetConfirmed approves (true) or rejects (false) the given user.
+// SetConfirmed approves (true) or rejects (false) the given user, returning
+// ErrUserNotFound when no such user exists. UpdateMap's row count is what
+// separates the two: a zero with a nil error means the WHERE matched nothing,
+// not that the write failed.
 func (d *dbStore) SetConfirmed(id int64, confirmed bool) error {
-	_, err := d.users.UpdateMap(context.Background(),
+	n, err := d.users.UpdateMap(context.Background(),
 		map[string]any{"is_confirmed": confirmed, "is_rejected": !confirmed}, "tg_id = ?", id)
-	return err
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrUserNotFound.WithParams("tgId", id)
+	}
+	return nil
 }
 
 // ListConfirmedIDs returns the Telegram IDs of all confirmed users.
